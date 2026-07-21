@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Standing</title>
+  <rect width="64" height="64" rx="10" fill="#17201b"/>
+  <path d="M15 24 28 14h17L32 24H15Zm4 13 13-10h17L36 37H19Zm4 13 13-10h13L36 50H23Z" fill="#6bc88e"/>
+</svg>

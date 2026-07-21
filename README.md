@@ -30,6 +30,28 @@ Merchant plan activation is controlled by the plan's merchant, not the protocol 
 - Deploy scripts: `script/DeployFtsoAdapter.s.sol`, `script/DeployStanding.s.sol`, `script/ChargeKeeper.s.sol`
 - Tests: `test/Standing.t.sol`
 
+## Web application
+
+The `app/` directory contains the multi-route Coston2 application for
+subscribers, merchants, and permissionless keepers. It reads the deployed
+protocol directly and simulates every write before requesting a wallet
+signature.
+
+```bash
+cd app
+npm ci
+npm run dev
+```
+
+Frontend gates:
+
+```bash
+npm run lint
+npm test
+npm run build
+npm run test:browser
+```
+
 ## Local gates
 
 - `forge fmt`
