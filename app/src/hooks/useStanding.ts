@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Address } from 'viem'
 import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import {
@@ -44,8 +44,16 @@ export function useStanding(account?: Address) {
   const [state, setState] = useState(emptyState)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
+  const requestIdRef = useRef(0)
+  const accountRef = useRef(account)
+  accountRef.current = account
 
   const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current
+    const requestedAccount = account?.toLowerCase()
+    const isCurrentRequest = () =>
+      requestId === requestIdRef.current && requestedAccount === accountRef.current?.toLowerCase()
+
     setLoading(true)
     setError(undefined)
     try {
@@ -125,6 +133,7 @@ export function useStanding(account?: Address) {
         canceled: mandate[6],
       }))
 
+      if (!isCurrentRequest()) return
       setState({
         planCount,
         mandateCount,
@@ -140,9 +149,9 @@ export function useStanding(account?: Address) {
         merchantBalance,
       })
     } catch (nextError) {
-      setError(errorMessage(nextError))
+      if (isCurrentRequest()) setError(errorMessage(nextError))
     } finally {
-      setLoading(false)
+      if (isCurrentRequest()) setLoading(false)
     }
   }, [account])
 
@@ -152,4 +161,3 @@ export function useStanding(account?: Address) {
 
   return { state, loading, error, refresh }
 }
-

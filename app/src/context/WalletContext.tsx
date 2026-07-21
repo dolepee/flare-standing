@@ -17,6 +17,7 @@ import {
 import { coston2 } from '../config'
 import { publicClient } from '../lib/chain'
 import { errorMessage } from '../lib/format'
+import { COSTON2_WRITE_GAS_LIMIT, withCoston2GasLimit } from '../lib/gas'
 
 type TransactionState = {
   label: string
@@ -141,6 +142,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
           abi,
           functionName,
           args,
+          gas: COSTON2_WRITE_GAS_LIMIT,
         } as Parameters<typeof publicClient.simulateContract>[0])
         setTransaction({ label, status: 'signing' })
         const walletClient = createWalletClient({
@@ -149,7 +151,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
           transport: custom(window.ethereum),
         })
         const hash = await walletClient.writeContract(
-          simulation.request as Parameters<typeof walletClient.writeContract>[0],
+          withCoston2GasLimit(simulation.request) as Parameters<typeof walletClient.writeContract>[0],
         )
         setTransaction({ label, status: 'confirming', hash })
         const receipt = await publicClient.waitForTransactionReceipt({ hash })
