@@ -50,7 +50,7 @@ run_cast() {
   if [[ "$run_mode" == "1" ]]; then
     cast send "$target" "$sig" "$@" "${CAST_EXTRA[@]}"
   else
-    cast send "$target" "$sig" "$@" --dry-run "${CAST_EXTRA[@]}"
+    cast estimate "$target" "$sig" "$@" "${CAST_EXTRA[@]}"
   fi
 }
 
