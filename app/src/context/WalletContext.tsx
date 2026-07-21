@@ -131,10 +131,9 @@ export function WalletProvider({ children }: PropsWithChildren) {
 
   const execute: WalletContextValue['execute'] = useCallback(
     async ({ label, address, abi, functionName, args }) => {
-      if (!window.ethereum || !account) throw new Error('Connect wallet first')
-      if (chainId !== coston2.id) throw new Error('Switch to Coston2 first')
-
       try {
+        if (!window.ethereum || !account) throw new Error('Connect wallet first')
+        if (chainId !== coston2.id) throw new Error('Switch to Coston2 first')
         setTransaction({ label, status: 'simulating' })
         const simulation = await publicClient.simulateContract({
           account,

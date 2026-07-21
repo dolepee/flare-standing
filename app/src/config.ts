@@ -11,6 +11,11 @@ export const coston2 = defineChain({
   blockExplorers: {
     default: { name: 'Coston2 Explorer', url: COSTON2_EXPLORER },
   },
+  contracts: {
+    multicall3: {
+      address: '0xcA11bde05977b3631167028862bE2a173976CA11',
+    },
+  },
   testnet: true,
 })
 
@@ -19,4 +24,3 @@ export const FXRP_ADDRESS = '0x0b6a3645c240605887a5532109323A3E12273dc7' as cons
 export const FTSO_ADAPTER_ADDRESS = '0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8' as const
 
 export const DEPLOY_BLOCK = 33_098_682n
-

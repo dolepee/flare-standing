@@ -47,3 +47,22 @@ test('missing wallet is handled inside the product surface', async ({ page }) =>
   await expect(page.getByText('Install an EVM wallet to continue')).toBeVisible()
   expect(pageErrors).toEqual([])
 })
+
+test('wrong-network writes tell the user to switch chains', async ({ page }) => {
+  await page.addInitScript(() => {
+    const account = '0x1111111111111111111111111111111111111111'
+    window.ethereum = {
+      request: async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [account]
+        if (method === 'eth_chainId') return '0x1'
+        throw new Error(`Unexpected wallet method: ${method}`)
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    }
+  })
+  await page.goto('/merchant')
+  await page.getByRole('button', { name: 'Create plan' }).click()
+  await expect(page.getByText('Transaction stopped')).toBeVisible()
+  await expect(page.getByText('Switch to Coston2 first')).toBeVisible()
+})
