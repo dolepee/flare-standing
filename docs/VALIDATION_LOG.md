@@ -10,9 +10,9 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 
 - [x] FTSO path reads XRPL/USD on Coston2 (price is non-zero and timestamped)
 - [x] Contract deployed to Coston2 (`0xa1ccfe102946be49b7f2224b16402465d46a7c94`) and live tx history captured
-- [ ] Coston2 live loop: open, charge, top-up, cancel, blocked charge (remaining step: charge + blocked charge are still pending)
+- [x] Coston2 proof set: open, charge, top-up, cancel, insufficient-balance block, and canceled-charge rejection
 - [ ] Recovered at least one real user path (subscriber + merchant) for each loop
-- [x] Keeper-path execution path inspected using permissionless `charge` calls (read-only probe)
+- [x] Keeper path executed permissionlessly for both `ChargeExecuted` and `ChargeBlocked`
 - [ ] External users booked (creators/merchants/community) for post-demo outreach
 - [ ] Demo script aligned to final product framing (prepaid mandate + onchain replay points)
 
@@ -31,16 +31,22 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - Executed forge dry-run for adapter deploy on Coston2 (simulation works with chain 114 and estimated gas logged).
 - Confirmed live Coston2 Standing deployment and core state:
   - Standing contract: `0xa1ccfe102946be49b7f2224b16402465d46a7c94`
-  - `planCount() = 2`, `mandateCount() = 2`
-  - `planId=1` and `planId=2` are active
-  - `mandateId=1`: canceled, remaining=4,000,000 (4 FTestXRP), expired `nextChargeAt`
-  - `mandateId=2`: active, remaining=3,000,000 (3 FTestXRP), expired `nextChargeAt`
-  - `contractBalance() = 0x6acfc0` (6,989,056 micro-FXRP)
-  - Subscriber treasury-like address `0x3DBe06ec223c0bCD0D04B051d36CF1B077843D1a` has FTestXRP balance 3,000,000 and allowance 2,000,000 to standing.
-- Keeper probe:
-  - `cast call` / `cast estimate` on `charge(2)` succeeds for active mandate.
-  - `charge(1)` reverts with expected `NotActive` on canceled mandate.
-- Next execution step: finish funded Coston2 loop with write txs (open/charge/top-up/cancel/blocked-charge) once a funded signer key is provided.
+  - `planCount() = 7`, `mandateCount() = 6`
+  - `contractBalance()` = `0x11a49a0` (18,500,000 micro-FXRP)
+  - `FTestXRP.balanceOf(standing)` = `18,500,000`
+  - Subscriber `0x3DBe06ec223c0bCD0D04B051d36CF1B077843D1a` has `1,500,000` raw FTestXRP
+  - Keeper signer `0x9C7169BAAB226ABCC5C20d1CabebA8BaB9ea99dd` has `0` raw FTestXRP and sufficient C2FLR gas
+  - `mandate(1)` -> canceled, deposited/remaining `4,000,000`
+  - `mandate(2)` -> active, deposited `3,000,000`, remaining `2,000,000`, one successful charge
+  - `mandate(3)` -> active, deposited/remaining `3,000,000`
+  - `mandate(4)` -> canceled, deposited `4,000,000`, remaining `3,000,000`
+  - `mandate(5)` -> canceled, deposited/remaining `4,000,000`
+  - `mandate(6)` -> active, deposited/remaining `500,000`
+  - `mandate(7)` -> zeroed default slot (not opened)
+- Keeper execution:
+  - `charge(2)` emitted `ChargeExecuted` with `990,000` to the merchant and a `10,000` protocol fee.
+  - `charge(6)` emitted `ChargeBlocked` because its `500,000` remaining balance was below the `1,000,000` expected charge.
+  - `charge(4)` against a canceled mandate reverts with the expected `NotActive` selector (`0x80cb55e2`).
 
 - 2026-07-21 — live Coston2 dependency verification:
   - `cast call 0x0b6a3645c240605887a5532109323A3E12273dc7 "name()"` → `FTestXRP`
@@ -66,28 +72,35 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - Mandate canceled (`MandateCanceled`) mandate 1, tx `0xf638fb1ef3e6da6deeec88f083f8882b5b105cadafc4d93ca8563bb635bd688d` (block `33091772`)
 - Plan created (`PlanCreated`) id 2, tx `0xe392ea25b985a37b80604366912f6dc566dd8c56fee38657983246a7bab16317` (block `33091809`)
 - Mandate opened (`MandateOpened`) and top-up (`MandateTopUp`) for mandate 2, tx `0xc234b0f465983a74579c08aee75408e0380df86d36f21d0fe5664df8de92e04e` (block `33091811`)
-- No `ChargeExecuted` or `ChargeBlocked` events yet observed in this trace window.
-- `nextChargeAt` for mandate 2 is already elapsed (`1784630384`), but `charge(1)` was not executed because a funded Coston2 signer was not supplied in this environment.
+- Successful keeper charge (`ChargeExecuted`) for mandate 2, tx `0x09a849ef744b45ce80d07d408c85fd75ec8b8d218598eb8d38986817e54ddbee` (block `33095927`)
+  - merchant credit: `990,000` micro-FXRP
+  - protocol fee: `10,000` micro-FXRP
+- Insufficient-balance charge (`ChargeBlocked`) for mandate 6, tx `0xc59bf91eeab4cb146be7d681f66e3b0c517b6e360365074e58b8b23cde26c7a3` (block `33095929`)
+  - remaining: `500,000` micro-FXRP
+  - expected: `1,000,000` micro-FXRP
+- Canceled mandate 4 rejects `charge(4)` with `NotActive` (`0x80cb55e2`) in a read-only execution check.
 
 ### Current on-chain state snapshot (queried 2026-07-21)
 
 - `plan(1)` → `[priceUsdMicro: 0, priceFxrp: 1000000, periodSeconds: 45, active: true]`
-- `plan(2)` → same config as above, active true
-- `mandate(1)` → canceled = true (expected after manual cancellation)
-- `mandate(2)` → canceled = false
-- `contractBalance()` from contract view = `7000000` (7 FTestXRP)
-- `FTestXRP.balanceOf(standing)` = `7000000`
-- `FTestXRP.balanceOf(subscriber 0x3DBe...) = 3000000`
-- `mandate(2).nextChargeAt = 1784630384` (currently elapsed against `block.timestamp` at query time)
+- `plan(2)` → `[priceUsdMicro: 0, priceFxrp: 1000000, periodSeconds: 45, active: true]`
+- `mandate(1)` → canceled = true, deposited = 4,000,000, remaining = 4,000,000, expired `nextChargeAt`
+- `mandate(2)` → active, deposited = 3,000,000, remaining = 2,000,000, successful `lastChargeAt` recorded
+- `mandate(3)` → active, deposited = 3,000,000, remaining = 3,000,000, elapsed `nextChargeAt`
+- `mandate(4)` → canceled, deposited = 4,000,000, remaining = 3,000,000, elapsed `nextChargeAt`
+- `mandate(5)` → canceled, deposited = 4,000,000, remaining = 4,000,000, expired `nextChargeAt`
+- `mandate(6)` → active, deposited = 500,000, remaining = 500,000, blocked charge advanced `nextChargeAt`
+- `contractBalance()` from contract view = `18,500,000` (18.5 FTestXRP)
+- `merchantBalance(0x3DBe...) = 1,980,000`
+- `protocolFeeBalance(0x3DBe...) = 20,000`
+- `FTestXRP.balanceOf(subscriber 0x3DBe...) = 1,500,000`
+- `FTestXRP.balanceOf(keeper 0x9C71...) = 0`
 
 ### Gate status
 
-- This gives reproducible evidence for **deploy + partial lifecycle** under Coston2.
-- Remaining on-chain requirement for the full 5-step loop is a live signer/key run for:
-  - first successful `charge`
-  - blocked `charge` on canceled mandate
+- This gives reproducible Coston2 evidence for deploy, funding, open, top-up, successful charge, insufficient-balance block, cancel, and canceled-charge rejection.
+- The proof set spans controlled mandates because an insufficient-balance block and a successful charge are mutually exclusive at the same charge attempt.
 
 ### Immediate next action
 
-- Supply funded Coston2 signer (`PRIVATE_KEY` + matching `ACCOUNT_ADDRESS`) and rerun:
-  `RUN_LIVE=1 script/coston2-live-loop.sh` (or equivalent cast commands from README) to execute `charge` and blocked-path validation.
+- Preserve these transaction hashes in the public demo and begin merchant/subscriber user validation; no additional faucet funding is required for the technical gate.

@@ -21,6 +21,7 @@ Optional:
   FEE_BPS (default 100)
   MAX_PRICE_AGE (default 300)
   SUBSCRIBER (defaults to ACCOUNT_ADDRESS)
+  CHARGE_WAIT_SECONDS (default 50; must exceed the 45-second smoke-plan period)
 EOF
 }
 
@@ -32,6 +33,7 @@ fi
 run_mode="${RUN_LIVE:-0}" # 1 => broadcast, 0/default => dry-run
 FEE_BPS="${FEE_BPS:-100}"
 MAX_PRICE_AGE="${MAX_PRICE_AGE:-300}"
+CHARGE_WAIT_SECONDS="${CHARGE_WAIT_SECONDS:-50}"
 
 : "${PRIVATE_KEY:?Set PRIVATE_KEY in environment}"
 : "${ACCOUNT_ADDRESS:?Set ACCOUNT_ADDRESS in environment}"
@@ -143,25 +145,69 @@ fi
 : "${STANDING_ADDRESS:?Set STANDING_ADDRESS manually or RUN_STANDING_DEPLOY=1}"
 
 echo "[4/6] Running mandated lifecycle (dry-run unless RUN_LIVE=1)"
-  echo "approve stand token spend"
-  run_cast "$FTESTXRP_TOKEN_ADDR" "approve(address,uint256)" "$STANDING_ADDRESS" $((PLAN_PRICE + DEPOSIT_AMOUNT + TOPUP_AMOUNT))
-  echo "createPlan"
-  run_cast "$STANDING_ADDRESS" "createPlan(uint256,uint256,uint32,address)" 0 $PLAN_PRICE 45 "$SUBSCRIBER"
-  echo "openMandate"
-  run_cast "$STANDING_ADDRESS" "openMandate(uint256,uint256)" 1 $DEPOSIT_AMOUNT
+echo "approve stand token spend"
+run_cast "$FTESTXRP_TOKEN_ADDR" "approve(address,uint256)" "$STANDING_ADDRESS" $((PLAN_PRICE + DEPOSIT_AMOUNT + TOPUP_AMOUNT))
 
-echo "charge (first) - may fail if block timing is not yet reached"
-  run_cast "$STANDING_ADDRESS" "charge(uint256)" 1 || true
+echo "createPlan"
+before_plan_count="$(cast call "$STANDING_ADDRESS" "planCount()(uint256)" --rpc-url "$COSTON2_RPC")"
+run_cast "$STANDING_ADDRESS" "createPlan(uint256,uint256,uint32,address)" 0 $PLAN_PRICE 45 "$SUBSCRIBER"
 
-  echo "topUp"
-  run_cast "$STANDING_ADDRESS" "topUp(uint256,uint256)" 1 $TOPUP_AMOUNT
-  echo "cancel"
-  run_cast "$STANDING_ADDRESS" "cancel(uint256)" 1
-  echo "charge after cancel (expected blocked path)"
-  run_cast "$STANDING_ADDRESS" "charge(uint256)" 1 || true
+if [[ "$run_mode" != "1" ]]; then
+  echo "Dry-run preflight complete. The remaining lifecycle is stateful and requires RUN_LIVE=1."
+  exit 0
+fi
+
+after_plan_count="$(cast call "$STANDING_ADDRESS" "planCount()(uint256)" --rpc-url "$COSTON2_RPC")"
+expected_plan_count=$((before_plan_count + 1))
+if [[ "$after_plan_count" -ne "$expected_plan_count" ]]; then
+  echo "ERROR: planCount advanced from $before_plan_count to $after_plan_count; refusing to select a potentially foreign plan"
+  exit 1
+fi
+PLAN_ID="$expected_plan_count"
+
+echo "plan id in this run: $PLAN_ID (previous count $before_plan_count)"
+
+echo "openMandate"
+before_mandate_count="$(cast call "$STANDING_ADDRESS" "mandateCount()(uint256)" --rpc-url "$COSTON2_RPC")"
+run_cast "$STANDING_ADDRESS" "openMandate(uint256,uint256)" "$PLAN_ID" $DEPOSIT_AMOUNT
+after_mandate_count="$(cast call "$STANDING_ADDRESS" "mandateCount()(uint256)" --rpc-url "$COSTON2_RPC")"
+expected_mandate_count=$((before_mandate_count + 1))
+if [[ "$after_mandate_count" -ne "$expected_mandate_count" ]]; then
+  echo "ERROR: mandateCount advanced from $before_mandate_count to $after_mandate_count; refusing to select a potentially foreign mandate"
+  exit 1
+fi
+MANDATE_ID="$expected_mandate_count"
+echo "mandate id in this run: $MANDATE_ID (previous count $before_mandate_count)"
+
+echo "waiting ${CHARGE_WAIT_SECONDS}s for the first charge window"
+sleep "$CHARGE_WAIT_SECONDS"
+
+echo "charge (first)"
+run_cast "$STANDING_ADDRESS" "charge(uint256)" "$MANDATE_ID"
+
+echo "topUp"
+run_cast "$STANDING_ADDRESS" "topUp(uint256,uint256)" "$MANDATE_ID" $TOPUP_AMOUNT
+echo "cancel"
+run_cast "$STANDING_ADDRESS" "cancel(uint256)" "$MANDATE_ID"
+echo "charge after cancel (expected NotActive revert)"
+set +e
+canceled_charge_output="$(cast call "$STANDING_ADDRESS" "charge(uint256)" "$MANDATE_ID" --from "$ACCOUNT_ADDRESS" --rpc-url "$COSTON2_RPC" 2>&1)"
+canceled_charge_status=$?
+set -e
+if [[ "$canceled_charge_status" -eq 0 ]]; then
+  echo "ERROR: canceled mandate unexpectedly accepted a charge"
+  exit 1
+fi
+expected_not_active_selector="0x80cb55e2"
+if [[ "$canceled_charge_output" != *"$expected_not_active_selector"* ]]; then
+  echo "ERROR: canceled charge failed without the expected NotActive selector ($expected_not_active_selector)"
+  echo "Failure: ${canceled_charge_output##*$'\n'}"
+  exit 1
+fi
+echo "canceled charge rejected: ${canceled_charge_output##*$'\n'}"
 
 echo "[5/6] Summary"
-open_state="$(cast call "$STANDING_ADDRESS" "mandate(uint256)(uint256,address,uint256,uint256,uint256,uint256,bool)" 1 --rpc-url "$COSTON2_RPC" --json)"
+open_state="$(cast call "$STANDING_ADDRESS" "mandate(uint256)(uint256,address,uint256,uint256,uint256,uint256,bool)" "$MANDATE_ID" --rpc-url "$COSTON2_RPC" --json)"
 mandate_plan_id="$(echo "$open_state" | jq -r '.[0]')"
 mandate_subscriber="$(echo "$open_state" | jq -r '.[1]')"
 mandate_deposited="$(echo "$open_state" | jq -r '.[2]')"
@@ -169,7 +215,7 @@ mandate_remaining="$(echo "$open_state" | jq -r '.[3]')"
 mandate_next_charge="$(echo "$open_state" | jq -r '.[4]')"
 mandate_last_charge="$(echo "$open_state" | jq -r '.[5]')"
 mandate_canceled="$(echo "$open_state" | jq -r '.[6]')"
-echo "mandate id 1 state:"
+echo "mandate id $MANDATE_ID state:"
 echo "  planId: $mandate_plan_id"
 echo "  subscriber: $mandate_subscriber"
 echo "  deposited: $mandate_deposited"
