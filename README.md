@@ -35,6 +35,60 @@ This is an EVM-side billing layer. XRPL-to-Flare mint path is used for onboardin
 - `forge test`
 - `forge coverage --report lcov`
 
+## 48-hour Coston2 spike (deployment-ready)
+
+The objective is a complete on-chain loop on Coston2:
+
+1. deploy adapter
+2. deploy standing protocol
+3. create plan
+4. open mandate
+5. charge once
+6. top-up
+7. cancel
+8. blocked / failed charge attempt on canceled line
+
+Prerequisites:
+
+- funded Coston2 signer
+- `PRIVATE_KEY` with funds for deployment and tx gas
+- `ACCOUNT_ADDRESS` matching the key
+- `FTESTXRP_TOKEN_ADDR` filled with a valid 40-hex-character Coston2 asset address
+- `TREASURY_ADDR` and merchant addresses for test assertions
+
+Execution template:
+
+```bash
+# 0) sanity: set these from one source before running
+export COSTON2_RPC=https://coston2-api.flare.network/ext/C/rpc
+export FTSO_V2_ADDR=0x3d893C53D9e8056135C26C8c638B76C8b60Df726
+export FXRP_TOKEN_ADDR=$FTESTXRP_TOKEN_ADDR
+
+# 1) deploy adapter (dry run first)
+forge script script/DeployFtsoAdapter.s.sol:DeployFtsoAdapter \
+  --sig "run(address,uint8)" $FTSO_V2_ADDR 6 \
+  --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+
+# 2) broadcast once ready
+forge script ... --broadcast > /tmp/flare-ftso-rt.json
+
+# 3) deploy standing
+forge script script/DeployStanding.s.sol:DeployStanding \
+  --sig "run(address,address,address,uint16,uint256)" \
+  $FXRP_TOKEN_ADDR <FTSO_ADAPTER_ADDRESS> $TREASURY_ADDR 100 300 \
+  --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+
+# 4) open live hardhat/etherscan/forge interaction script (or manual CLI) for:
+#    - createPlan
+#    - openMandate
+#    - charge (wait/readiness first)
+#    - topUp
+#    - cancel
+#    - charge (expect NotReady / insufficient state on canceled line)
+```
+
+Capture tx hashes, addresses, and final balances into `docs/VALIDATION_LOG.md`.
+
 ## Deployment workflow (example)
 
 ```bash
