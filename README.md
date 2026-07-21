@@ -118,7 +118,7 @@ cast send $STANDING_ADDRESS "cancel(uint256)" 1 --rpc-url "$COSTON2_RPC" --priva
 cast send $STANDING_ADDRESS "charge(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY" || true
 
 # Return the unused prepaid balance after cancellation
-cast send $STANDING_ADDRESS "withdrawMandate(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+cast send $STANDING_ADDRESS "withdrawMandate(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY" --gas-limit 800000
 ```
 
 For the reproducible runner, set `TX_GAS_LIMIT=800000` when using Coston2. The
