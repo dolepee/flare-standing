@@ -15,11 +15,13 @@ This is an EVM-side billing layer. XRPL-to-Flare mint path is used for onboardin
 
 ## Core flow
 
-1. Merchant creates a plan (`createPlan`) with price, period, and active flag.
+1. Merchant creates its own plan (`createPlan`) with price, period, and active flag.
 2. Subscriber opens a mandate (`openMandate`) and deposits FXRP once.
 3. Keeper/agent calls `charge` when `nextChargeAt` is reached.
 4. The contract applies the protocol fee and credits merchant/protocol balances.
-5. Subscriber can `cancel`; future charges are blocked and remaining funds can be withdrawn.
+5. Subscriber must `cancel`; future charges are blocked and remaining funds can then be withdrawn.
+
+Merchant plan activation is controlled by the plan's merchant, not the protocol owner. Deposits and withdrawals require exact token balance deltas, so fee-on-transfer and otherwise non-conserving token behavior is rejected instead of creating unbacked accounting.
 
 ## Contract surface
 
@@ -93,11 +95,10 @@ Suggested direct-loop commands once funded key and `STANDING_ADDRESS` are availa
 ```bash
 export COSTON2_RPC=https://coston2-api.flare.network/ext/C/rpc
 export STANDING_ADDRESS=<deployed standing>
-export SUBSCRIBER=$ACCOUNT_ADDRESS
 
 # Approve + open a mandate (1.0 FXRP)
 cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-cast send $STANDING_ADDRESS "createPlan(uint256,uint256,uint32,address)" 0 1000000 45 $SUBSCRIBER --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+cast send $STANDING_ADDRESS "createPlan(uint256,uint256,uint32,address)" 0 1000000 45 $ACCOUNT_ADDRESS --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 cast send $STANDING_ADDRESS "openMandate(uint256,uint256)" 1 3000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 
 # Wait until nextChargeAt.
@@ -174,6 +175,8 @@ forge script script/ChargeKeeper.s.sol:ChargeKeeper \
 Track the 48-hour spike and mainnet proof here:
 
 - `docs/VALIDATION_LOG.md`
+
+The address in the validation log is the historical Coston2 spike deployment. Security hardening merged after that deployment requires a new contract deployment; see `docs/SECURITY_NOTES.md`.
 
 ## Pre-submission hardening
 
