@@ -37,7 +37,12 @@ Merchant plan activation is controlled by the plan's merchant, not the protocol 
 - `forge test`
 - `forge coverage --report lcov`
 
-## 48-hour Coston2 spike (deployment-ready)
+## 48-hour Coston2 spike (live)
+
+- Standing: `0x8a29c741280554028d76666dc75558d98caab855`
+- FTSO adapter: `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8`
+- FTestXRP: `0x0b6a3645c240605887a5532109323A3E12273dc7`
+- Exact deployment and lifecycle receipts: `docs/VALIDATION_LOG.md`
 
 The objective is a complete on-chain loop on Coston2:
 
