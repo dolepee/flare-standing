@@ -14,7 +14,7 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - [x] Hardened Coston2 candidate lifecycle validation completed (`0x8a29c741280554028d76666dc75558d98caab855`)
 - [ ] Recovered at least one real user path (subscriber + merchant) for each loop
 - [x] Keeper path executed permissionlessly for both `ChargeExecuted` and `ChargeBlocked`
-- [ ] One XRPL testnet mint/funding path completed and timed
+- [x] One XRPL testnet direct-mint path completed and timed
 - [ ] Smart Accounts/direct-mint availability confirmed with the Flare team
 - [ ] External users booked (creators/merchants/community) for post-demo outreach
 - [ ] Demo script aligned to final product framing (prepaid mandate + onchain replay points)
@@ -102,6 +102,40 @@ to `868,677` raw FTestXRP at execution time.
 - Protocol withdrawal: `0x15677d80c39d15086213a952ee51d7015183f6205439a62b3a77dc6401cb305d`
 - Residual allowance cleared: `0x58fcbc435a917995a982046408149201e3d84c76ae6552b9ce31c254ef9463a3`
 
+### XRPL Testnet to Coston2 direct-mint proof
+
+The official Flare Viem starter's `direct-mint-tag.ts` flow was run unchanged
+against XRPL Testnet and Coston2. A reusable destination tag was reserved and
+bound to the XRPL wallet's derived Flare smart account before the XRPL payment
+was sent.
+
+- XRPL sender: `rEAEY1WFcBurB5RdDhKmKFbpke7hzLEXce`
+- Derived Flare smart account: `0xe8F14E95A2011B3b9E4B607002016e22D8bFbDf4`
+- MintingTagManager: `0x094511737909b626391106bBc21B25feb2D67B96`
+- AssetManagerFXRP: `0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA`
+- Core Vault XRPL address: `rDhpmiPq4BVBDWMVdSrmkgt8thKyRzGV1p`
+- Tag `182` reserved: `0x2eb94bb413467706007d17419f67d122aadca8f29a871feb43f01360c722260b`
+  (block `33103959`)
+- Tag `182` bound to the derived smart account:
+  `0x5f396691c61b907e1ee75ddf907339e2f0aad510d87f5816efa4f6cc1c31acf1`
+  (block `33103961`)
+- XRPL payment: `E5B02DF79E4B1891EA26A02384CEEF52AAC771B3B2F4A88524E0962B40CDEB3E`
+  - validated with `tesSUCCESS` in ledger `19256400`
+  - destination tag: `182`
+  - payment: `10.2 XRP` (`10 XRP` net mint plus `0.1 XRP` minting fee and
+    `0.1 XRP` executor fee)
+  - validated at `2026-07-21T19:06:20Z`
+- `DirectMintingExecuted`:
+  `0x740995f3602e9f6548ccb11d70c789c53490faee67d1455f2a6faa7e3bec4c28`
+  (block `33104019`)
+  - minted amount: `10,000,000` UBA (`10 FXRP`)
+  - target balance changed from `0` to `10,000,000` UBA
+  - executed at `2026-07-21T19:08:53Z`
+- Observed validated-payment-to-execution time: `153 seconds`
+
+This is controlled-builder testnet evidence, not an external-user mint or a
+mainnet availability claim.
+
 Funding for this validation was recovered from the same signer's canceled
 historical mandates. One recovery attempt
 (`0x2ef83eac03663ed4f4100e90663a93d2f5b81eafec059bc650f48ca065f4b5c1`)
@@ -113,11 +147,13 @@ gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`)
 
 - Historical proof remains useful for the insufficient-balance keeper path.
 - The hardened candidate now proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
-- The Coston2 contract and live FTSO portions of the 48-hour gate are complete.
-- Full GREEN status still requires one XRPL-side test mint/funding path and two creator conversations. This controlled signer run is not external-user validation.
+- The Coston2 contract, live FTSO, and XRPL-to-Coston2 direct-mint portions of
+  the 48-hour gate are complete.
+- Full GREEN status still requires two creator conversations and confirmation
+  of current Smart Accounts/direct-mint availability with the Flare team. This
+  controlled signer run is not external-user validation.
 
 ### Immediate next action
 
-- Complete and time one XRPL testnet mint/funding path.
 - Record the Flare team's current Smart Accounts/direct-mint availability answer.
 - Book two creator or merchant conversations, then recruit the first external Coston2 subscriber.
