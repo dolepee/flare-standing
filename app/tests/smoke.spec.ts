@@ -66,3 +66,39 @@ test('wrong-network writes tell the user to switch chains', async ({ page }) => 
   await expect(page.getByText('Transaction stopped')).toBeVisible()
   await expect(page.getByText('Switch to Coston2 first')).toBeVisible()
 })
+
+test('adding Coston2 is followed by an explicit verified switch', async ({ page }) => {
+  await page.addInitScript(() => {
+    const account = '0x1111111111111111111111111111111111111111'
+    let activeChain = '0x1'
+    let switchCalls = 0
+    const calls: string[] = []
+    ;(window as unknown as { walletCalls: string[] }).walletCalls = calls
+    window.ethereum = {
+      request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+        calls.push(method)
+        if (method === 'eth_accounts') return [account]
+        if (method === 'eth_chainId') return activeChain
+        if (method === 'wallet_addEthereumChain') return null
+        if (method === 'wallet_switchEthereumChain') {
+          switchCalls += 1
+          if (switchCalls === 1) throw Object.assign(new Error('Unknown chain'), { code: 4902 })
+          const chainParameter = params?.[0] as { chainId?: string } | undefined
+          if (!chainParameter?.chainId) throw new Error('Missing chain ID')
+          activeChain = chainParameter.chainId
+          return null
+        }
+        throw new Error(`Unexpected wallet method: ${method}`)
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Switch to Coston2' }).click()
+  await expect(page.getByRole('button', { name: /0x1111.*1111/ })).toBeVisible()
+  const calls = await page.evaluate(() => (window as unknown as { walletCalls: string[] }).walletCalls)
+  expect(calls.filter((method) => method === 'wallet_switchEthereumChain')).toHaveLength(2)
+  expect(calls).toContain('wallet_addEthereumChain')
+  expect(calls.at(-1)).toBe('eth_chainId')
+})

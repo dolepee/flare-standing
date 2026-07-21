@@ -122,8 +122,14 @@ export function WalletProvider({ children }: PropsWithChildren) {
             },
           ],
         })
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }],
+        })
       }
-      setChainId(coston2.id)
+      const activeChain = parseChainId(await window.ethereum.request({ method: 'eth_chainId' }))
+      setChainId(activeChain)
+      if (activeChain !== coston2.id) throw new Error('Wallet did not switch to Coston2')
     } catch (error) {
       setTransaction({ label: 'Switch network', status: 'error', message: errorMessage(error) })
       throw error
