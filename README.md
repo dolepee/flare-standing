@@ -96,22 +96,30 @@ Suggested direct-loop commands once funded key and `STANDING_ADDRESS` are availa
 export COSTON2_RPC=https://coston2-api.flare.network/ext/C/rpc
 export STANDING_ADDRESS=<deployed standing>
 
-# Approve + open a mandate (1.0 FXRP)
-cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+# Approve + open a mandate (3.0 FXRP)
+cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 3000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 cast send $STANDING_ADDRESS "createPlan(uint256,uint256,uint32,address)" 0 1000000 45 $ACCOUNT_ADDRESS --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 cast send $STANDING_ADDRESS "openMandate(uint256,uint256)" 1 3000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 
 # Wait until nextChargeAt.
 cast send $STANDING_ADDRESS "charge(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 
-# Refill from subscriber and trigger second charge
+# Top up the prepaid balance
 cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 cast send $STANDING_ADDRESS "topUp(uint256,uint256)" 1 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 
 # Cancel and verify blocked path on canceled line
 cast send $STANDING_ADDRESS "cancel(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 cast send $STANDING_ADDRESS "charge(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY" || true
+
+# Return the unused prepaid balance after cancellation
+cast send $STANDING_ADDRESS "withdrawMandate(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
 ```
+
+For the reproducible runner, set `TX_GAS_LIMIT=800000` when using Coston2. The
+FTestXRP proxy has under-estimated a state-changing transfer during validation;
+the explicit limit prevents a false out-of-gas failure while actual gas usage
+remains metered normally.
 
 Capture tx hashes, addresses, and final balances into `docs/VALIDATION_LOG.md`.
 
