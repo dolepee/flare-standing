@@ -20,6 +20,7 @@ Optional:
   FTSO_ADAPTER_ADDRESS
   FEE_BPS (default 100)
   MAX_PRICE_AGE (default 300)
+  TX_GAS_LIMIT (default 800000; avoids Coston2 proxy-token underestimation)
   CHARGE_WAIT_SECONDS (default 50; must exceed the 45-second smoke-plan period)
 EOF
 }
@@ -32,6 +33,7 @@ fi
 run_mode="${RUN_LIVE:-0}" # 1 => broadcast, 0/default => dry-run
 FEE_BPS="${FEE_BPS:-100}"
 MAX_PRICE_AGE="${MAX_PRICE_AGE:-300}"
+TX_GAS_LIMIT="${TX_GAS_LIMIT:-800000}"
 CHARGE_WAIT_SECONDS="${CHARGE_WAIT_SECONDS:-50}"
 
 : "${PRIVATE_KEY:?Set PRIVATE_KEY in environment}"
@@ -41,16 +43,17 @@ CHARGE_WAIT_SECONDS="${CHARGE_WAIT_SECONDS:-50}"
 : "${FTSO_V2_ADDR:?Set FTSO_V2_ADDR in environment}"
 : "${FTESTXRP_TOKEN_ADDR:?Set FTESTXRP_TOKEN_ADDR in environment}"
 
-CAST_EXTRA=(--rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY")
+CAST_SEND_EXTRA=(--rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY" --gas-limit "$TX_GAS_LIMIT")
+CAST_ESTIMATE_EXTRA=(--rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY")
 
 run_cast() {
   local target="$1"
   local sig="$2"
   shift 2
   if [[ "$run_mode" == "1" ]]; then
-    cast send "$target" "$sig" "$@" "${CAST_EXTRA[@]}"
+    cast send "$target" "$sig" "$@" "${CAST_SEND_EXTRA[@]}"
   else
-    cast estimate "$target" "$sig" "$@" "${CAST_EXTRA[@]}"
+    cast estimate "$target" "$sig" "$@" "${CAST_ESTIMATE_EXTRA[@]}"
   fi
 }
 
@@ -144,7 +147,7 @@ fi
 
 echo "[4/6] Running mandated lifecycle (dry-run unless RUN_LIVE=1)"
 echo "approve stand token spend"
-run_cast "$FTESTXRP_TOKEN_ADDR" "approve(address,uint256)" "$STANDING_ADDRESS" $((PLAN_PRICE + DEPOSIT_AMOUNT + TOPUP_AMOUNT))
+run_cast "$FTESTXRP_TOKEN_ADDR" "approve(address,uint256)" "$STANDING_ADDRESS" $((DEPOSIT_AMOUNT + TOPUP_AMOUNT))
 
 echo "createPlan"
 before_plan_count="$(cast call "$STANDING_ADDRESS" "planCount()(uint256)" --rpc-url "$COSTON2_RPC")"
@@ -203,6 +206,9 @@ if [[ "$canceled_charge_output" != *"$expected_not_active_selector"* ]]; then
   exit 1
 fi
 echo "canceled charge rejected: ${canceled_charge_output##*$'\n'}"
+
+echo "withdraw unused mandate balance"
+run_cast "$STANDING_ADDRESS" "withdrawMandate(uint256)" "$MANDATE_ID"
 
 echo "[5/6] Summary"
 open_state="$(cast call "$STANDING_ADDRESS" "mandate(uint256)(uint256,address,uint256,uint256,uint256,uint256,bool)" "$MANDATE_ID" --rpc-url "$COSTON2_RPC" --json)"
