@@ -95,36 +95,29 @@ forge script script/DeployStanding.s.sol:DeployStanding \
 #    - charge (expect NotReady / insufficient state on canceled line)
 ```
 
-Suggested direct-loop commands once funded key and `STANDING_ADDRESS` are available:
+Use the checked runner for shared or previously used deployments. It snapshots
+`planCount` and `mandateCount`, derives the IDs created by the current run, and
+stops if either counter advances unexpectedly. Do not substitute hardcoded IDs
+on a shared deployment.
 
 ```bash
 export COSTON2_RPC=https://coston2-api.flare.network/ext/C/rpc
-export STANDING_ADDRESS=<deployed standing>
+export FTSO_V2_ADDR=0x3d893C53D9e8056135C26C8c638B76C8b60Df726
+export FTESTXRP_TOKEN_ADDR=0x0b6a3645c240605887a5532109323A3E12273dc7
+export FTSO_ADAPTER_ADDRESS=0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8
+export STANDING_ADDRESS=0x8a29c741280554028d76666dc75558d98caab855
+export TREASURY_ADDR="$ACCOUNT_ADDRESS"
+export TX_GAS_LIMIT=800000
 
-# Approve + open a mandate (3.0 FXRP)
-cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 3000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-cast send $STANDING_ADDRESS "createPlan(uint256,uint256,uint32,address)" 0 1000000 45 $ACCOUNT_ADDRESS --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-cast send $STANDING_ADDRESS "openMandate(uint256,uint256)" 1 3000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+# Estimate only; no state changes.
+RUN_LIVE=0 bash script/coston2-live-loop.sh
 
-# Wait until nextChargeAt.
-cast send $STANDING_ADDRESS "charge(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-
-# Top up the prepaid balance
-cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-cast send $STANDING_ADDRESS "topUp(uint256,uint256)" 1 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-
-# Cancel and verify blocked path on canceled line
-cast send $STANDING_ADDRESS "cancel(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-cast send $STANDING_ADDRESS "charge(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY" || true
-
-# Return the unused prepaid balance after cancellation
-cast send $STANDING_ADDRESS "withdrawMandate(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY" --gas-limit 800000
+# Broadcast one complete lifecycle after checking the dry run.
+RUN_LIVE=1 bash script/coston2-live-loop.sh
 ```
 
-For the reproducible runner, set `TX_GAS_LIMIT=800000` when using Coston2. The
-FTestXRP proxy has under-estimated a state-changing transfer during validation;
-the explicit limit prevents a false out-of-gas failure while actual gas usage
-remains metered normally.
+The explicit gas limit avoids a Coston2 FTestXRP proxy under-estimation observed
+during validation while actual gas usage remains metered normally.
 
 Capture tx hashes, addresses, and final balances into `docs/VALIDATION_LOG.md`.
 
