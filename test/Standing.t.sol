@@ -217,6 +217,26 @@ contract StandingTest is Test {
         assertEq(taxedToken.balanceOf(address(taxedStanding)), CHARGE_USEC);
         assertEq(taxedToken.balanceOf(address(this)), 0);
     }
+
+    function test_TokenCallbackCannotCancelDuringTopUp() public {
+        ReentrantSubscriberToken callbackToken = new ReentrantSubscriberToken();
+        StandingMandates callbackStanding =
+            new StandingMandates(address(callbackToken), address(adapter), TREASURY, 100, 300);
+        callbackToken.mint(address(callbackToken), CHARGE_USEC * 2);
+
+        vm.prank(MERCHANT);
+        uint256 planId = callbackStanding.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        callbackToken.openAsSubscriber(callbackStanding, planId, CHARGE_USEC);
+        callbackToken.setAttack(callbackStanding, 1, true);
+
+        vm.expectRevert(StandingMandates.InsufficientBalance.selector);
+        callbackToken.topUpAsSubscriber(callbackStanding, 1, CHARGE_USEC);
+
+        StandingMandates.Mandate memory state = callbackStanding.mandate(1);
+        assertFalse(state.canceled);
+        assertEq(state.deposited, CHARGE_USEC);
+        assertEq(state.remaining, CHARGE_USEC);
+    }
 }
 
 contract MockFxrpToken {
@@ -337,5 +357,51 @@ contract OutboundFeeToken {
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
         return true;
+    }
+}
+
+contract ReentrantSubscriberToken {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    StandingMandates private attackTarget;
+    uint256 private attackMandateId;
+    bool private attackEnabled;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function openAsSubscriber(StandingMandates standing, uint256 planId, uint256 amount) external {
+        allowance[address(this)][address(standing)] = amount * 2;
+        standing.openMandate(planId, amount);
+    }
+
+    function topUpAsSubscriber(StandingMandates standing, uint256 mandateId, uint256 amount) external {
+        standing.topUp(mandateId, amount);
+    }
+
+    function setAttack(StandingMandates standing, uint256 mandateId, bool enabled) external {
+        attackTarget = standing;
+        attackMandateId = mandateId;
+        attackEnabled = enabled;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (allowance[from][msg.sender] < amount) return false;
+        allowance[from][msg.sender] -= amount;
+        if (attackEnabled) attackTarget.cancel(attackMandateId);
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    function _transfer(address from, address to, uint256 amount) private {
+        if (balanceOf[from] < amount) revert();
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
     }
 }

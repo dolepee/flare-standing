@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.28;
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
@@ -75,6 +75,8 @@ contract StandingMandates {
     event MerchantWithdraw(address indexed merchant, uint256 amount);
     event ProtocolWithdraw(address indexed treasury, uint256 amount);
     event MandateWithdrawn(uint256 indexed mandateId, address indexed subscriber, uint256 amount);
+    event PausedSet(bool paused);
+    event OwnershipTransferred(address indexed previousOwner, address indexed nextOwner);
 
     error Unauthorized();
     error NotActive();
@@ -120,11 +122,14 @@ contract StandingMandates {
 
     function setPaused(bool value) external onlyOwner {
         paused = value;
+        emit PausedSet(value);
     }
 
     function transferOwnership(address nextOwner) external onlyOwner {
         if (nextOwner == address(0)) revert InvalidArgument();
+        address previousOwner = owner;
         owner = nextOwner;
+        emit OwnershipTransferred(previousOwner, nextOwner);
     }
 
     function createPlan(uint256 priceUsdMicro, uint256 priceFxrp, uint32 periodSeconds, address merchant)
@@ -189,7 +194,7 @@ contract StandingMandates {
         emit MandateTopUp(mandateId, msg.sender, amount);
     }
 
-    function cancel(uint256 mandateId) external {
+    function cancel(uint256 mandateId) external nonReentrant {
         Mandate storage mandateData = mandates[mandateId];
         if (mandateData.subscriber != msg.sender || mandateData.canceled) revert Unauthorized();
         mandateData.canceled = true;
