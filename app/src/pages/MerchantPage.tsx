@@ -4,7 +4,7 @@ import { STANDING_ADDRESS } from '../config'
 import { standingAbi } from '../contracts'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
-import { formatFxrp, parseFxrp } from '../lib/format'
+import { formatFxrp, parseFxrp, runUiAction } from '../lib/format'
 
 export function MerchantPage() {
   const { account, execute } = useWallet()
@@ -46,7 +46,7 @@ export function MerchantPage() {
     <div className="page">
       <section className="page-heading"><div><span className="eyebrow">Merchant workspace</span><h1>Issue a plan. Claim completed charges.</h1><p>Plans are controlled by the merchant wallet. Standing only applies the fixed protocol fee after a successful charge.</p></div></section>
       <section className="merchant-layout">
-        <form className="form-surface" onSubmit={(event) => void createPlan(event)}>
+        <form className="form-surface" onSubmit={(event) => runUiAction(createPlan(event))}>
           <div className="section-title"><div><span className="eyebrow">New plan</span><h2>Billing terms</h2></div><Plus aria-hidden="true" /></div>
           <fieldset className="segmented field-segmented">
             <legend>Pricing currency</legend>
@@ -63,7 +63,7 @@ export function MerchantPage() {
             <CircleDollarSign aria-hidden="true" />
             <span>Available to claim</span>
             <strong>{formatFxrp(state.merchantBalance)} FXRP</strong>
-            <button className="button button-secondary" type="button" onClick={() => void withdraw()} disabled={!account || state.merchantBalance === 0n}>Withdraw</button>
+            <button className="button button-secondary" type="button" onClick={() => runUiAction(withdraw())} disabled={!account || state.merchantBalance === 0n}>Withdraw</button>
           </div>
           <div className="merchant-plan-summary">
             <span>Your plans</span><strong>{merchantPlans.length}</strong><small>{merchantPlans.filter((plan) => plan.active).length} active</small>
@@ -73,4 +73,3 @@ export function MerchantPage() {
     </div>
   )
 }
-

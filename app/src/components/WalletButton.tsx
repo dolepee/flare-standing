@@ -1,14 +1,14 @@
 import { WalletCards } from 'lucide-react'
 import { coston2 } from '../config'
 import { useWallet } from '../context/WalletContext'
-import { shortAddress } from '../lib/format'
+import { runUiAction, shortAddress } from '../lib/format'
 
 export function WalletButton() {
   const { account, connected, correctChain, connect, switchToCoston2 } = useWallet()
 
   if (!connected) {
     return (
-      <button className="wallet-button" type="button" onClick={() => void connect()}>
+      <button className="wallet-button" type="button" onClick={() => runUiAction(connect())}>
         <WalletCards size={16} aria-hidden="true" />
         Connect wallet
       </button>
@@ -17,7 +17,7 @@ export function WalletButton() {
 
   if (!correctChain) {
     return (
-      <button className="wallet-button wallet-warning" type="button" onClick={() => void switchToCoston2()}>
+      <button className="wallet-button wallet-warning" type="button" onClick={() => runUiAction(switchToCoston2())}>
         Switch to {coston2.name}
       </button>
     )
@@ -30,4 +30,3 @@ export function WalletButton() {
     </button>
   )
 }
-

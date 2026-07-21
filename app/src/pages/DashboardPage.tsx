@@ -5,7 +5,7 @@ import { Status } from '../components/Status'
 import { STANDING_ADDRESS } from '../config'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
-import { formatFxrp, shortAddress } from '../lib/format'
+import { formatFxrp, runUiAction, shortAddress } from '../lib/format'
 
 export function DashboardPage() {
   const { account, connected } = useWallet()
@@ -22,7 +22,7 @@ export function DashboardPage() {
           <p>Fund once in FXRP. Charge on schedule. Cancel onchain and withdraw unused capacity without asking a merchant.</p>
         </div>
         <div className="heading-actions">
-          <button className="icon-button" type="button" onClick={() => void refresh()} aria-label="Refresh protocol data">
+          <button className="icon-button" type="button" onClick={() => runUiAction(refresh())} aria-label="Refresh protocol data">
             <RefreshCw size={17} className={loading ? 'spin' : ''} aria-hidden="true" />
           </button>
           <Status tone={error ? 'warning' : loading ? 'muted' : 'good'}>{error ? 'RPC unavailable' : loading ? 'Syncing' : 'Coston2 synced'}</Status>
@@ -94,4 +94,3 @@ export function DashboardPage() {
     </div>
   )
 }
-

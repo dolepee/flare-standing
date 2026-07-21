@@ -4,7 +4,7 @@ import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import { erc20Abi, standingAbi, type StandingPlan } from '../contracts'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
-import { formatFxrp, formatPeriod, formatUsdMicro, isSameAddress, parseFxrp, shortAddress } from '../lib/format'
+import { formatFxrp, formatPeriod, formatUsdMicro, isSameAddress, parseFxrp, runUiAction, shortAddress } from '../lib/format'
 import { Status } from './Status'
 
 export function PlanRow({ plan }: { plan: StandingPlan }) {
@@ -61,7 +61,7 @@ export function PlanRow({ plan }: { plan: StandingPlan }) {
       </div>
       <div className="plan-actions">
         {isMerchant ? (
-          <button className="icon-button" type="button" onClick={() => void setActive(!plan.active)} aria-label={plan.active ? 'Pause plan' : 'Activate plan'}>
+          <button className="icon-button" type="button" onClick={() => runUiAction(setActive(!plan.active))} aria-label={plan.active ? 'Pause plan' : 'Activate plan'}>
             {plan.active ? <PauseCircle aria-hidden="true" /> : <PlayCircle aria-hidden="true" />}
           </button>
         ) : null}
@@ -76,7 +76,7 @@ export function PlanRow({ plan }: { plan: StandingPlan }) {
             <input id={`deposit-${plan.id}`} inputMode="decimal" value={deposit} onChange={(event) => setDeposit(event.target.value)} />
             <span>FXRP</span>
           </div>
-          <button className="button button-primary" type="button" onClick={() => void subscribe()} disabled={!account || Number(deposit) <= 0}>
+          <button className="button button-primary" type="button" onClick={() => runUiAction(subscribe())} disabled={!account || Number(deposit) <= 0}>
             Approve and open mandate
           </button>
           <small>Two wallet confirmations are required when allowance is insufficient.</small>
@@ -85,4 +85,3 @@ export function PlanRow({ plan }: { plan: StandingPlan }) {
     </article>
   )
 }
-

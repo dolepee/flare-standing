@@ -4,7 +4,7 @@ import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import { erc20Abi, standingAbi, type StandingMandate, type StandingPlan } from '../contracts'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
-import { formatFxrp, formatTime, isSameAddress, parseFxrp, shortAddress } from '../lib/format'
+import { formatFxrp, formatTime, isSameAddress, parseFxrp, runUiAction, shortAddress } from '../lib/format'
 import { Status } from './Status'
 
 export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?: StandingPlan }) {
@@ -65,17 +65,17 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
       </dl>
       <div className="mandate-actions">
         {!mandate.canceled ? (
-          <button className="button button-secondary" type="button" disabled={!due || !account} onClick={() => void action('charge', `Charge mandate #${mandate.id}`)}>
+          <button className="button button-secondary" type="button" disabled={!due || !account} onClick={() => runUiAction(action('charge', `Charge mandate #${mandate.id}`))}>
             <Zap size={15} aria-hidden="true" /> Run charge
           </button>
         ) : null}
         {isOwner && !mandate.canceled ? (
-          <button className="button button-quiet" type="button" onClick={() => void action('cancel', `Cancel mandate #${mandate.id}`)}>
+          <button className="button button-quiet" type="button" onClick={() => runUiAction(action('cancel', `Cancel mandate #${mandate.id}`))}>
             <Ban size={15} aria-hidden="true" /> Cancel
           </button>
         ) : null}
         {isOwner && mandate.canceled && mandate.remaining > 0n ? (
-          <button className="button button-primary" type="button" onClick={() => void action('withdrawMandate', `Withdraw mandate #${mandate.id}`)}>
+          <button className="button button-primary" type="button" onClick={() => runUiAction(action('withdrawMandate', `Withdraw mandate #${mandate.id}`))}>
             <CircleDollarSign size={15} aria-hidden="true" /> Withdraw balance
           </button>
         ) : null}
@@ -84,7 +84,7 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
         <div className="compact-topup">
           <label htmlFor={`topup-${mandate.id}`}>Add capacity</label>
           <div className="input-with-unit"><input id={`topup-${mandate.id}`} value={topUp} onChange={(event) => setTopUp(event.target.value)} /><span>FXRP</span></div>
-          <button className="icon-button" type="button" onClick={() => void addFunds()} aria-label="Top up mandate">
+          <button className="icon-button" type="button" onClick={() => runUiAction(addFunds())} aria-label="Top up mandate">
             <RotateCcw size={16} aria-hidden="true" />
           </button>
         </div>
@@ -92,4 +92,3 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
     </article>
   )
 }
-

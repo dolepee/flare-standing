@@ -83,40 +83,50 @@ export function WalletProvider({ children }: PropsWithChildren) {
   }, [syncWallet])
 
   const connect = useCallback(async () => {
-    if (!window.ethereum) throw new Error('Install an EVM wallet to continue')
-    const accounts = (await window.ethereum.request({
-      method: 'eth_requestAccounts',
-    })) as Address[]
-    setAccount(accounts[0])
-    const chain = await window.ethereum.request({ method: 'eth_chainId' })
-    setChainId(parseChainId(chain))
+    try {
+      if (!window.ethereum) throw new Error('Install an EVM wallet to continue')
+      const accounts = (await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      })) as Address[]
+      setAccount(accounts[0])
+      const chain = await window.ethereum.request({ method: 'eth_chainId' })
+      setChainId(parseChainId(chain))
+    } catch (error) {
+      setTransaction({ label: 'Connect wallet', status: 'error', message: errorMessage(error) })
+      throw error
+    }
   }, [])
 
   const switchToCoston2 = useCallback(async () => {
-    if (!window.ethereum) throw new Error('Install an EVM wallet to continue')
-    const chainIdHex = `0x${coston2.id.toString(16)}`
     try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: chainIdHex }],
-      })
+      if (!window.ethereum) throw new Error('Install an EVM wallet to continue')
+      const chainIdHex = `0x${coston2.id.toString(16)}`
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }],
+        })
+      } catch (error) {
+        const code = (error as { code?: number }).code
+        if (code !== 4902) throw error
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: chainIdHex,
+              chainName: coston2.name,
+              nativeCurrency: coston2.nativeCurrency,
+              rpcUrls: coston2.rpcUrls.default.http,
+              blockExplorerUrls: [coston2.blockExplorers.default.url],
+            },
+          ],
+        })
+      }
+      setChainId(coston2.id)
     } catch (error) {
-      const code = (error as { code?: number }).code
-      if (code !== 4902) throw error
-      await window.ethereum.request({
-        method: 'wallet_addEthereumChain',
-        params: [
-          {
-            chainId: chainIdHex,
-            chainName: coston2.name,
-            nativeCurrency: coston2.nativeCurrency,
-            rpcUrls: coston2.rpcUrls.default.http,
-            blockExplorerUrls: [coston2.blockExplorers.default.url],
-          },
-        ],
-      })
+      setTransaction({ label: 'Switch network', status: 'error', message: errorMessage(error) })
+      throw error
     }
-    setChainId(coston2.id)
   }, [])
 
   const execute: WalletContextValue['execute'] = useCallback(

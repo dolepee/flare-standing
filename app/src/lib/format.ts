@@ -50,3 +50,6 @@ export function errorMessage(error: unknown) {
   return candidate.length > 150 ? `${candidate.slice(0, 147)}...` : candidate
 }
 
+export function runUiAction(action: Promise<unknown>) {
+  void action.catch(() => undefined)
+}

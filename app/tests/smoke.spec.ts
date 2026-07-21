@@ -37,3 +37,13 @@ test.describe('mobile navigation', () => {
     await expect(page.getByRole('heading', { name: 'The rails are testnet-live.' })).toBeVisible()
   })
 })
+
+test('missing wallet is handled inside the product surface', async ({ page }) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Connect wallet' }).click()
+  await expect(page.getByText('Transaction stopped')).toBeVisible()
+  await expect(page.getByText('Install an EVM wallet to continue')).toBeVisible()
+  expect(pageErrors).toEqual([])
+})
