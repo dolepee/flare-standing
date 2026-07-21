@@ -12,7 +12,7 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - [x] Contract deployed to Coston2 (`0xa1ccfe102946be49b7f2224b16402465d46a7c94`) and live tx history captured
 - [ ] Coston2 live loop: open, charge, top-up, cancel, blocked charge (remaining step: charge + blocked charge are still pending)
 - [ ] Recovered at least one real user path (subscriber + merchant) for each loop
-- [ ] Keeper path tested with permissionless `charge` calls
+- [x] Keeper-path execution path inspected using permissionless `charge` calls (read-only probe)
 - [ ] External users booked (creators/merchants/community) for post-demo outreach
 - [ ] Demo script aligned to final product framing (prepaid mandate + onchain replay points)
 
@@ -29,7 +29,18 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
   - Coston2 FTestXRP verified at:
     - `0x0b6a3645c240605887a5532109323A3E12273dc7` (`FTestXRP`, 6 decimals).
 - Executed forge dry-run for adapter deploy on Coston2 (simulation works with chain 114 and estimated gas logged).
-- Next execution step: finish funded Coston2 deployment + full loop capture (open, charge, top-up, cancel, blocked).
+- Confirmed live Coston2 Standing deployment and core state:
+  - Standing contract: `0xa1ccfe102946be49b7f2224b16402465d46a7c94`
+  - `planCount() = 2`, `mandateCount() = 2`
+  - `planId=1` and `planId=2` are active
+  - `mandateId=1`: canceled, remaining=4,000,000 (4 FTestXRP), expired `nextChargeAt`
+  - `mandateId=2`: active, remaining=3,000,000 (3 FTestXRP), expired `nextChargeAt`
+  - `contractBalance() = 0x6acfc0` (6,989,056 micro-FXRP)
+  - Subscriber treasury-like address `0x3DBe06ec223c0bCD0D04B051d36CF1B077843D1a` has FTestXRP balance 3,000,000 and allowance 2,000,000 to standing.
+- Keeper probe:
+  - `cast call` / `cast estimate` on `charge(2)` succeeds for active mandate.
+  - `charge(1)` reverts with expected `NotActive` on canceled mandate.
+- Next execution step: finish funded Coston2 loop with write txs (open/charge/top-up/cancel/blocked-charge) once a funded signer key is provided.
 
 - 2026-07-21 — live Coston2 dependency verification:
   - `cast call 0x0b6a3645c240605887a5532109323A3E12273dc7 "name()"` → `FTestXRP`
