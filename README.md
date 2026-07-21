@@ -42,6 +42,8 @@ Merchant plan activation is controlled by the plan's merchant, not the protocol 
 - Standing: `0x8a29c741280554028d76666dc75558d98caab855`
 - FTSO adapter: `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8`
 - FTestXRP: `0x0b6a3645c240605887a5532109323A3E12273dc7`
+- XRPL direct mint: `10 XRP` reached an XRPL-derived Flare smart account as
+  `10 FXRP` through the official tagged direct-mint flow (`153s` observed)
 - Exact deployment and lifecycle receipts: `docs/VALIDATION_LOG.md`
 
 The objective is a complete on-chain loop on Coston2:
@@ -182,7 +184,9 @@ Track the 48-hour spike and mainnet proof here:
 
 - `docs/VALIDATION_LOG.md`
 
-The address in the validation log is the historical Coston2 spike deployment. Security hardening merged after that deployment requires a new contract deployment; see `docs/SECURITY_NOTES.md`.
+The validation log separates the historical spike from the current hardened
+Coston2 deployment and records the XRPL direct-mint evidence. See
+`docs/SECURITY_NOTES.md` for the hardening history.
 
 ## Pre-submission hardening
 
