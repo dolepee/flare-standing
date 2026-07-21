@@ -158,7 +158,12 @@ if [[ "$run_mode" != "1" ]]; then
 fi
 
 after_plan_count="$(cast call "$STANDING_ADDRESS" "planCount()(uint256)" --rpc-url "$COSTON2_RPC")"
-PLAN_ID="$after_plan_count"
+expected_plan_count=$((before_plan_count + 1))
+if [[ "$after_plan_count" -ne "$expected_plan_count" ]]; then
+  echo "ERROR: planCount advanced from $before_plan_count to $after_plan_count; refusing to select a potentially foreign plan"
+  exit 1
+fi
+PLAN_ID="$expected_plan_count"
 
 echo "plan id in this run: $PLAN_ID (previous count $before_plan_count)"
 
@@ -166,7 +171,12 @@ echo "openMandate"
 before_mandate_count="$(cast call "$STANDING_ADDRESS" "mandateCount()(uint256)" --rpc-url "$COSTON2_RPC")"
 run_cast "$STANDING_ADDRESS" "openMandate(uint256,uint256)" "$PLAN_ID" $DEPOSIT_AMOUNT
 after_mandate_count="$(cast call "$STANDING_ADDRESS" "mandateCount()(uint256)" --rpc-url "$COSTON2_RPC")"
-MANDATE_ID="$after_mandate_count"
+expected_mandate_count=$((before_mandate_count + 1))
+if [[ "$after_mandate_count" -ne "$expected_mandate_count" ]]; then
+  echo "ERROR: mandateCount advanced from $before_mandate_count to $after_mandate_count; refusing to select a potentially foreign mandate"
+  exit 1
+fi
+MANDATE_ID="$expected_mandate_count"
 echo "mandate id in this run: $MANDATE_ID (previous count $before_mandate_count)"
 
 echo "waiting ${CHARGE_WAIT_SECONDS}s for the first charge window"
