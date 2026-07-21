@@ -198,6 +198,12 @@ if [[ "$canceled_charge_status" -eq 0 ]]; then
   echo "ERROR: canceled mandate unexpectedly accepted a charge"
   exit 1
 fi
+expected_not_active_selector="0x80cb55e2"
+if [[ "$canceled_charge_output" != *"$expected_not_active_selector"* ]]; then
+  echo "ERROR: canceled charge failed without the expected NotActive selector ($expected_not_active_selector)"
+  echo "Failure: ${canceled_charge_output##*$'\n'}"
+  exit 1
+fi
 echo "canceled charge rejected: ${canceled_charge_output##*$'\n'}"
 
 echo "[5/6] Summary"
