@@ -23,5 +23,14 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
   - `forge coverage --report lcov` ✅
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
+  - Coston2 FTestXRP verified at:
+    - `0x0b6a3645c240605887a5532109323A3E12273dc7` (`FTestXRP`, 6 decimals).
 - Executed forge dry-run for adapter deploy on Coston2 (simulation works with chain 114 and estimated gas logged).
 - Next execution step: finish funded Coston2 deployment + full loop capture (open, charge, top-up, cancel, blocked).
+
+- 2026-07-21 — live Coston2 dependency verification:
+  - `cast call 0x0b6a3645c240605887a5532109323A3E12273dc7 "name()"` → `FTestXRP`
+  - `cast call 0x0b6a3645c240605887a5532109323A3E12273dc7 "symbol()"` → `FTestXRP`
+  - `cast call 0x0b6a3645c240605887a5532109323A3E12273dc7 "decimals()"` → `6`
+  - `cast call 0x3d893C53D9e8056135C26C8c638B76C8b60Df726 "getFeedByIdInWei(bytes21)" 0x015852502f55534400000000000000000000000000`
+    - value=`1133595000000000000`, timestamp=`1784628281`

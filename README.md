@@ -54,6 +54,7 @@ Prerequisites:
 - `PRIVATE_KEY` with funds for deployment and tx gas
 - `ACCOUNT_ADDRESS` matching the key
 - `FTESTXRP_TOKEN_ADDR` filled with a valid 40-hex-character Coston2 asset address
+  (`0x0b6a3645c240605887a5532109323A3E12273dc7`)
 - `TREASURY_ADDR` and merchant addresses for test assertions
 
 Execution template:
@@ -85,6 +86,30 @@ forge script script/DeployStanding.s.sol:DeployStanding \
 #    - topUp
 #    - cancel
 #    - charge (expect NotReady / insufficient state on canceled line)
+```
+
+Suggested direct-loop commands once funded key and `STANDING_ADDRESS` are available:
+
+```bash
+export COSTON2_RPC=https://coston2-api.flare.network/ext/C/rpc
+export STANDING_ADDRESS=<deployed standing>
+export SUBSCRIBER=$ACCOUNT_ADDRESS
+
+# Approve + open a mandate (1.0 FXRP)
+cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+cast send $STANDING_ADDRESS "createPlan(uint256,uint256,uint32,address)" 0 1000000 45 $SUBSCRIBER --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+cast send $STANDING_ADDRESS "openMandate(uint256,uint256)" 1 3000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+
+# Wait until nextChargeAt.
+cast send $STANDING_ADDRESS "charge(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+
+# Refill from subscriber and trigger second charge
+cast send $FTESTXRP_TOKEN_ADDR "approve(address,uint256)" $STANDING_ADDRESS 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+cast send $STANDING_ADDRESS "topUp(uint256,uint256)" 1 1000000 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+
+# Cancel and verify blocked path on canceled line
+cast send $STANDING_ADDRESS "cancel(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
+cast send $STANDING_ADDRESS "charge(uint256)" 1 --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY" || true
 ```
 
 Capture tx hashes, addresses, and final balances into `docs/VALIDATION_LOG.md`.
