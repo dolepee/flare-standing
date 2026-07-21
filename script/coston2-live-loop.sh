@@ -20,7 +20,6 @@ Optional:
   FTSO_ADAPTER_ADDRESS
   FEE_BPS (default 100)
   MAX_PRICE_AGE (default 300)
-  SUBSCRIBER (defaults to ACCOUNT_ADDRESS)
   CHARGE_WAIT_SECONDS (default 50; must exceed the 45-second smoke-plan period)
 EOF
 }
@@ -42,7 +41,6 @@ CHARGE_WAIT_SECONDS="${CHARGE_WAIT_SECONDS:-50}"
 : "${FTSO_V2_ADDR:?Set FTSO_V2_ADDR in environment}"
 : "${FTESTXRP_TOKEN_ADDR:?Set FTESTXRP_TOKEN_ADDR in environment}"
 
-SUBSCRIBER="${SUBSCRIBER:-$ACCOUNT_ADDRESS}"
 CAST_EXTRA=(--rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY")
 
 run_cast() {
@@ -150,7 +148,7 @@ run_cast "$FTESTXRP_TOKEN_ADDR" "approve(address,uint256)" "$STANDING_ADDRESS" $
 
 echo "createPlan"
 before_plan_count="$(cast call "$STANDING_ADDRESS" "planCount()(uint256)" --rpc-url "$COSTON2_RPC")"
-run_cast "$STANDING_ADDRESS" "createPlan(uint256,uint256,uint32,address)" 0 $PLAN_PRICE 45 "$SUBSCRIBER"
+run_cast "$STANDING_ADDRESS" "createPlan(uint256,uint256,uint32,address)" 0 $PLAN_PRICE 45 "$ACCOUNT_ADDRESS"
 
 if [[ "$run_mode" != "1" ]]; then
   echo "Dry-run preflight complete. The remaining lifecycle is stateful and requires RUN_LIVE=1."

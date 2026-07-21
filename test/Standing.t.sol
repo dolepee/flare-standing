@@ -22,8 +22,18 @@ contract StandingTest is Test {
         token.mint(address(this), CHARGE_USEC * 100);
     }
 
+    function _createFixedPlan(uint256 priceFxrp) internal returns (uint256 planId) {
+        vm.prank(MERCHANT);
+        planId = standing.createPlan(0, priceFxrp, 60, MERCHANT);
+    }
+
+    function _createUsdPlan(uint256 priceUsdMicro) internal returns (uint256 planId) {
+        vm.prank(MERCHANT);
+        planId = standing.createPlan(priceUsdMicro, 0, 60, MERCHANT);
+    }
+
     function test_OpenPlanAndChargeFlow() public {
-        uint256 planId = standing.createPlan(2_500_000, 0, 60, MERCHANT);
+        uint256 planId = _createUsdPlan(2_500_000);
         token.approve(address(standing), CHARGE_USEC * 10);
         standing.openMandate(planId, CHARGE_USEC * 10);
         oracle.setMockRate(2_500_000_000_000_000_000, block.timestamp);
@@ -44,7 +54,7 @@ contract StandingTest is Test {
     }
 
     function test_CancelThenWithdraw() public {
-        uint256 planId = standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
         token.approve(address(standing), CHARGE_USEC * 2);
         standing.openMandate(planId, CHARGE_USEC * 2);
         standing.cancel(1);
@@ -53,7 +63,7 @@ contract StandingTest is Test {
     }
 
     function test_UsdPlanUsesFtsoAndRejectsStalePrice() public {
-        uint256 planId = standing.createPlan(1_000_000, 0, 60, MERCHANT);
+        uint256 planId = _createUsdPlan(1_000_000);
         token.approve(address(standing), 5_000_000);
         standing.openMandate(planId, 5_000_000);
         oracle.setMockRate(500_000_000_000_000_000, block.timestamp);
@@ -65,7 +75,7 @@ contract StandingTest is Test {
     }
 
     function test_ChargeBlockedWhenInsufficientBalance() public {
-        uint256 planId = standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
         token.approve(address(standing), CHARGE_USEC / 2);
         standing.openMandate(planId, CHARGE_USEC / 2);
 
@@ -76,7 +86,7 @@ contract StandingTest is Test {
     }
 
     function test_TopUpAndWithdraw() public {
-        uint256 planId = standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
         token.approve(address(standing), CHARGE_USEC);
         standing.openMandate(planId, CHARGE_USEC / 2);
         token.approve(address(standing), CHARGE_USEC);
@@ -89,16 +99,18 @@ contract StandingTest is Test {
     }
 
     function test_PlanDeactivationBlocksCharges() public {
-        uint256 planId = standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
         token.approve(address(standing), CHARGE_USEC * 2);
         standing.openMandate(planId, CHARGE_USEC * 2);
 
         vm.warp(block.timestamp + 61);
 
+        vm.prank(MERCHANT);
         standing.setPlanActive(planId, false);
         vm.expectRevert(StandingMandates.NotActive.selector);
         standing.charge(1);
 
+        vm.prank(MERCHANT);
         standing.setPlanActive(planId, true);
         standing.charge(1);
 
@@ -107,7 +119,7 @@ contract StandingTest is Test {
     }
 
     function test_SetPausedPreventsOpenAndCharge() public {
-        uint256 planId = standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
         standing.setPaused(true);
 
         token.approve(address(standing), CHARGE_USEC);
@@ -128,16 +140,102 @@ contract StandingTest is Test {
     }
 
     function test_ChargeUsesFeeCap() public {
-        uint256 planId = standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
         token.approve(address(standing), CHARGE_USEC);
         standing.openMandate(planId, CHARGE_USEC);
 
-        // Fast path: fee is 10 bps by default, so expected merchant payout is exactly 990000 of 1000000.
+        // The test deployment uses a 100 bps fee, so the merchant receives 990000 of 1000000.
         vm.warp(block.timestamp + 61);
         standing.charge(1);
 
         assertEq(standing.merchantBalance(MERCHANT), 990000);
         assertEq(standing.protocolFeeBalance(TREASURY), 10000);
+    }
+
+    function test_OnlyMerchantCanCreateAndManagePlan() public {
+        vm.expectRevert(StandingMandates.Unauthorized.selector);
+        standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+
+        vm.expectRevert(StandingMandates.Unauthorized.selector);
+        standing.setPlanActive(planId, false);
+
+        vm.prank(MERCHANT);
+        standing.setPlanActive(planId, false);
+        assertFalse(standing.plan(planId).active);
+    }
+
+    function test_ActiveMandateCannotWithdrawAfterChargeIsDue() public {
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+        token.approve(address(standing), CHARGE_USEC);
+        standing.openMandate(planId, CHARGE_USEC);
+        vm.warp(block.timestamp + 61);
+
+        vm.expectRevert(StandingMandates.NotActive.selector);
+        standing.withdrawMandate(1);
+
+        StandingMandates.Mandate memory state = standing.mandate(1);
+        assertFalse(state.canceled);
+        assertEq(state.remaining, CHARGE_USEC);
+    }
+
+    function test_FeeOnTransferDepositIsRejectedWithoutAccountingMutation() public {
+        FeeOnTransferToken taxedToken = new FeeOnTransferToken();
+        StandingMandates taxedStanding = new StandingMandates(address(taxedToken), address(adapter), TREASURY, 100, 300);
+        taxedToken.mint(address(this), CHARGE_USEC * 2);
+
+        vm.prank(MERCHANT);
+        uint256 planId = taxedStanding.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        taxedToken.approve(address(taxedStanding), CHARGE_USEC);
+
+        vm.expectRevert(StandingMandates.UnsupportedTokenBehavior.selector);
+        taxedStanding.openMandate(planId, CHARGE_USEC);
+
+        assertEq(taxedStanding.mandateCount(), 0);
+        assertEq(taxedToken.balanceOf(address(taxedStanding)), 0);
+        assertEq(taxedToken.balanceOf(address(this)), CHARGE_USEC * 2);
+    }
+
+    function test_FeeOnTransferWithdrawalRevertsWithoutLosingMandateAccounting() public {
+        OutboundFeeToken taxedToken = new OutboundFeeToken();
+        StandingMandates taxedStanding = new StandingMandates(address(taxedToken), address(adapter), TREASURY, 100, 300);
+        taxedToken.mint(address(this), CHARGE_USEC);
+
+        vm.prank(MERCHANT);
+        uint256 planId = taxedStanding.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        taxedToken.approve(address(taxedStanding), CHARGE_USEC);
+        taxedStanding.openMandate(planId, CHARGE_USEC);
+        taxedStanding.cancel(1);
+
+        vm.expectRevert(StandingMandates.UnsupportedTokenBehavior.selector);
+        taxedStanding.withdrawMandate(1);
+
+        StandingMandates.Mandate memory state = taxedStanding.mandate(1);
+        assertEq(state.deposited, CHARGE_USEC);
+        assertEq(state.remaining, CHARGE_USEC);
+        assertEq(taxedToken.balanceOf(address(taxedStanding)), CHARGE_USEC);
+        assertEq(taxedToken.balanceOf(address(this)), 0);
+    }
+
+    function test_TokenCallbackCannotCancelDuringTopUp() public {
+        ReentrantSubscriberToken callbackToken = new ReentrantSubscriberToken();
+        StandingMandates callbackStanding =
+            new StandingMandates(address(callbackToken), address(adapter), TREASURY, 100, 300);
+        callbackToken.mint(address(callbackToken), CHARGE_USEC * 2);
+
+        vm.prank(MERCHANT);
+        uint256 planId = callbackStanding.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        callbackToken.openAsSubscriber(callbackStanding, planId, CHARGE_USEC);
+        callbackToken.setAttack(callbackStanding, 1, true);
+
+        vm.expectRevert(StandingMandates.InsufficientBalance.selector);
+        callbackToken.topUpAsSubscriber(callbackStanding, 1, CHARGE_USEC);
+
+        StandingMandates.Mandate memory state = callbackStanding.mandate(1);
+        assertFalse(state.canceled);
+        assertEq(state.deposited, CHARGE_USEC);
+        assertEq(state.remaining, CHARGE_USEC);
     }
 }
 
@@ -195,5 +293,115 @@ contract MockFtsoOracle {
 
     function getFeedByIdInWei(bytes21) external view returns (uint256 value, uint64 at) {
         return (rateWei, uint64(timestamp));
+    }
+}
+
+contract FeeOnTransferToken {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _transferWithFee(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (allowance[from][msg.sender] < amount) return false;
+        allowance[from][msg.sender] -= amount;
+        _transferWithFee(from, to, amount);
+        return true;
+    }
+
+    function _transferWithFee(address from, address to, uint256 amount) private {
+        if (balanceOf[from] < amount) revert();
+        uint256 fee = amount / 10;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount - fee;
+    }
+}
+
+contract OutboundFeeToken {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        if (balanceOf[msg.sender] < amount) revert();
+        uint256 fee = amount / 10;
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount - fee;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (allowance[from][msg.sender] < amount) return false;
+        if (balanceOf[from] < amount) revert();
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+
+contract ReentrantSubscriberToken {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    StandingMandates private attackTarget;
+    uint256 private attackMandateId;
+    bool private attackEnabled;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function openAsSubscriber(StandingMandates standing, uint256 planId, uint256 amount) external {
+        allowance[address(this)][address(standing)] = amount * 2;
+        standing.openMandate(planId, amount);
+    }
+
+    function topUpAsSubscriber(StandingMandates standing, uint256 mandateId, uint256 amount) external {
+        standing.topUp(mandateId, amount);
+    }
+
+    function setAttack(StandingMandates standing, uint256 mandateId, bool enabled) external {
+        attackTarget = standing;
+        attackMandateId = mandateId;
+        attackEnabled = enabled;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (allowance[from][msg.sender] < amount) return false;
+        allowance[from][msg.sender] -= amount;
+        if (attackEnabled) attackTarget.cancel(attackMandateId);
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    function _transfer(address from, address to, uint256 amount) private {
+        if (balanceOf[from] < amount) revert();
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
     }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.28;
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
@@ -75,6 +75,8 @@ contract StandingMandates {
     event MerchantWithdraw(address indexed merchant, uint256 amount);
     event ProtocolWithdraw(address indexed treasury, uint256 amount);
     event MandateWithdrawn(uint256 indexed mandateId, address indexed subscriber, uint256 amount);
+    event PausedSet(bool paused);
+    event OwnershipTransferred(address indexed previousOwner, address indexed nextOwner);
 
     error Unauthorized();
     error NotActive();
@@ -83,6 +85,7 @@ contract StandingMandates {
     error Reentrant();
     error InsufficientBalance();
     error StalePrice();
+    error UnsupportedTokenBehavior();
 
     constructor(address fxrpToken, address priceAdapter_, address treasury_, uint16 feeBps_, uint256 maxPriceAge_) {
         if (fxrpToken == address(0) || priceAdapter_ == address(0) || treasury_ == address(0)) {
@@ -119,11 +122,14 @@ contract StandingMandates {
 
     function setPaused(bool value) external onlyOwner {
         paused = value;
+        emit PausedSet(value);
     }
 
     function transferOwnership(address nextOwner) external onlyOwner {
         if (nextOwner == address(0)) revert InvalidArgument();
+        address previousOwner = owner;
         owner = nextOwner;
+        emit OwnershipTransferred(previousOwner, nextOwner);
     }
 
     function createPlan(uint256 priceUsdMicro, uint256 priceFxrp, uint32 periodSeconds, address merchant)
@@ -131,6 +137,7 @@ contract StandingMandates {
         returns (uint256 planId)
     {
         if (periodSeconds == 0 || merchant == address(0)) revert InvalidArgument();
+        if (merchant != msg.sender) revert Unauthorized();
         if ((priceUsdMicro == 0 && priceFxrp == 0) || (priceUsdMicro != 0 && priceFxrp != 0)) {
             revert InvalidArgument();
         }
@@ -147,9 +154,11 @@ contract StandingMandates {
         emit PlanCreated(planId, merchant, priceUsdMicro, priceFxrp, periodSeconds, true);
     }
 
-    function setPlanActive(uint256 planId, bool active) external onlyOwner {
-        if (planId == 0 || plans[planId].merchant == address(0)) revert InvalidArgument();
-        plans[planId].active = active;
+    function setPlanActive(uint256 planId, bool active) external {
+        Plan storage planData = plans[planId];
+        if (planId == 0 || planData.merchant == address(0)) revert InvalidArgument();
+        if (msg.sender != planData.merchant) revert Unauthorized();
+        planData.active = active;
         emit PlanUpdated(planId, active);
     }
 
@@ -159,7 +168,7 @@ contract StandingMandates {
         if (depositAmount == 0) revert InvalidArgument();
 
         uint256 expectedFirstCharge = nextChargeTime(planData.periodSeconds, 0);
-        if (!_safeTransferFrom(address(fxrp), msg.sender, address(this), depositAmount)) revert InsufficientBalance();
+        _pullExact(msg.sender, depositAmount);
 
         mandateCount += 1;
         mandates[mandateCount] = Mandate({
@@ -179,13 +188,13 @@ contract StandingMandates {
         Mandate storage mandateData = mandates[mandateId];
         if (mandateData.subscriber != msg.sender || mandateData.canceled) revert Unauthorized();
         if (amount == 0) revert InvalidArgument();
-        if (!_safeTransferFrom(address(fxrp), msg.sender, address(this), amount)) revert InsufficientBalance();
+        _pullExact(msg.sender, amount);
         mandateData.deposited += amount;
         mandateData.remaining += amount;
         emit MandateTopUp(mandateId, msg.sender, amount);
     }
 
-    function cancel(uint256 mandateId) external {
+    function cancel(uint256 mandateId) external nonReentrant {
         Mandate storage mandateData = mandates[mandateId];
         if (mandateData.subscriber != msg.sender || mandateData.canceled) revert Unauthorized();
         mandateData.canceled = true;
@@ -223,15 +232,12 @@ contract StandingMandates {
     function withdrawMandate(uint256 mandateId) external nonReentrant {
         Mandate storage mandateData = mandates[mandateId];
         if (mandateData.subscriber != msg.sender) revert Unauthorized();
-        if (!mandateData.canceled && block.timestamp < mandateData.nextChargeAt) {
-            // Explicit cancellation is required before early withdrawal.
-            revert NotActive();
-        }
+        if (!mandateData.canceled) revert NotActive();
         uint256 amount = mandateData.remaining;
         if (amount == 0) revert InvalidArgument();
         mandateData.deposited = 0;
         mandateData.remaining = 0;
-        if (!_safeTransfer(address(fxrp), msg.sender, amount)) revert InsufficientBalance();
+        _pushExact(msg.sender, amount);
         emit MandateWithdrawn(mandateId, msg.sender, amount);
     }
 
@@ -239,7 +245,7 @@ contract StandingMandates {
         uint256 available = merchantBalance[msg.sender];
         if (amount == 0 || amount > available) revert InsufficientBalance();
         merchantBalance[msg.sender] = available - amount;
-        if (!_safeTransfer(address(fxrp), msg.sender, amount)) revert InsufficientBalance();
+        _pushExact(msg.sender, amount);
         emit MerchantWithdraw(msg.sender, amount);
     }
 
@@ -248,7 +254,7 @@ contract StandingMandates {
         if (msg.sender != treasury) revert Unauthorized();
         if (amount == 0 || amount > available) revert InsufficientBalance();
         protocolFeeBalance[treasury] = available - amount;
-        if (!_safeTransfer(address(fxrp), treasury, amount)) revert InsufficientBalance();
+        _pushExact(treasury, amount);
         emit ProtocolWithdraw(treasury, amount);
     }
 
@@ -274,6 +280,30 @@ contract StandingMandates {
 
     function mandate(uint256 mandateId) external view returns (Mandate memory) {
         return mandates[mandateId];
+    }
+
+    function _pullExact(address from, uint256 amount) private {
+        uint256 balanceBefore = fxrp.balanceOf(address(this));
+        if (!_safeTransferFrom(address(fxrp), from, address(this), amount)) revert InsufficientBalance();
+        uint256 balanceAfter = fxrp.balanceOf(address(this));
+        if (balanceAfter < balanceBefore || balanceAfter - balanceBefore != amount) {
+            revert UnsupportedTokenBehavior();
+        }
+    }
+
+    function _pushExact(address to, uint256 amount) private {
+        uint256 contractBalanceBefore = fxrp.balanceOf(address(this));
+        uint256 recipientBalanceBefore = fxrp.balanceOf(to);
+        if (!_safeTransfer(address(fxrp), to, amount)) revert InsufficientBalance();
+        uint256 contractBalanceAfter = fxrp.balanceOf(address(this));
+        uint256 recipientBalanceAfter = fxrp.balanceOf(to);
+        if (
+            contractBalanceAfter > contractBalanceBefore || contractBalanceBefore - contractBalanceAfter != amount
+                || recipientBalanceAfter < recipientBalanceBefore
+                || recipientBalanceAfter - recipientBalanceBefore != amount
+        ) {
+            revert UnsupportedTokenBehavior();
+        }
     }
 
     function _safeTransferFrom(address token, address from, address to, uint256 amount) private returns (bool ok) {
