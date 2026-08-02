@@ -43,6 +43,7 @@ const emptyState: ProtocolState = {
 export function useStanding(account?: Address) {
   const [state, setState] = useState(emptyState)
   const [loading, setLoading] = useState(true)
+  const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string>()
   const requestIdRef = useRef(0)
   const accountRef = useRef(account)
@@ -148,6 +149,7 @@ export function useStanding(account?: Address) {
         walletAllowance,
         merchantBalance,
       })
+      setInitialized(true)
     } catch (nextError) {
       if (isCurrentRequest()) setError(errorMessage(nextError))
     } finally {
@@ -159,5 +161,5 @@ export function useStanding(account?: Address) {
     void refresh()
   }, [refresh])
 
-  return { state, loading, error, refresh }
+  return { state, loading, initialized, error, refresh }
 }

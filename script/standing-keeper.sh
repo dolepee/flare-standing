@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STANDING_ADDRESS="${STANDING_ADDRESS:-0x8a29c741280554028d76666dc75558d98caab855}"
+COSTON2_RPC="${COSTON2_RPC:-https://coston2-api.flare.network/ext/C/rpc}"
+RUN_LIVE="${RUN_LIVE:-0}"
+KEEPER_INTERVAL_SECONDS="${KEEPER_INTERVAL_SECONDS:-20}"
+KEEPER_GAS_LIMIT="${KEEPER_GAS_LIMIT:-800000}"
+KEEPER_LOG_PATH="${KEEPER_LOG_PATH:-.standing/keeper.jsonl}"
+mode="${1:---once}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  script/standing-keeper.sh --once   Scan all mandates once (default).
+  script/standing-keeper.sh --loop   Repeat the scan under one process lock.
+
+The keeper is read-only by default. Set RUN_LIVE=1 and KEEPER_PRIVATE_KEY in
+the environment to broadcast due charge attempts. The script never retries a
+failed transaction inside a scan.
+
+Optional environment:
+  STANDING_ADDRESS
+  COSTON2_RPC
+  KEEPER_INTERVAL_SECONDS (default 20)
+  KEEPER_GAS_LIMIT (default 800000)
+  KEEPER_LOG_PATH (default .standing/keeper.jsonl)
+EOF
+}
+
+if [[ "$mode" == "--help" || "$mode" == "-h" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ "$mode" != "--once" && "$mode" != "--loop" ]]; then
+  usage >&2
+  exit 2
+fi
+
+for command in cast jq; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Required command missing: $command" >&2
+    exit 1
+  fi
+done
+
+chain_id="$(cast chain-id --rpc-url "$COSTON2_RPC")"
+if [[ "$chain_id" != "114" ]]; then
+  echo "Refusing keeper run on chain $chain_id; expected Coston2 chain 114" >&2
+  exit 1
+fi
+
+keeper_address="0x0000000000000000000000000000000000000000"
+if [[ "$RUN_LIVE" == "1" ]]; then
+  : "${KEEPER_PRIVATE_KEY:?Set KEEPER_PRIVATE_KEY only for an explicit live keeper run}"
+  keeper_address="$(cast wallet address --private-key "$KEEPER_PRIVATE_KEY")"
+fi
+
+mkdir -p "$(dirname "$KEEPER_LOG_PATH")"
+lock_dir="${KEEPER_LOG_PATH}.lock"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  echo "Another keeper process holds $lock_dir" >&2
+  exit 1
+fi
+trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT
+
+log_event() {
+  local payload="$1"
+  printf '%s\n' "$payload" | tee -a "$KEEPER_LOG_PATH"
+}
+
+scan_once() {
+  local now mandate_count paused mandate_id mandate_json plan_id next_charge canceled plan_json plan_active
+  now="$(cast block latest --rpc-url "$COSTON2_RPC" --field timestamp)"
+  mandate_count="$(cast call "$STANDING_ADDRESS" 'mandateCount()(uint256)' --rpc-url "$COSTON2_RPC")"
+  paused="$(cast call "$STANDING_ADDRESS" 'paused()(bool)' --rpc-url "$COSTON2_RPC")"
+
+  if [[ "$paused" == "true" ]]; then
+    log_event "$(jq -cn --arg at "$now" '{at:($at|tonumber),event:"scan_skipped",reason:"protocol_paused"}')"
+    return
+  fi
+
+  for ((mandate_id = 1; mandate_id <= mandate_count; mandate_id++)); do
+    mandate_json="$(cast call "$STANDING_ADDRESS" 'mandate(uint256)(uint256,address,uint256,uint256,uint256,uint256,bool)' "$mandate_id" --rpc-url "$COSTON2_RPC" --json)"
+    plan_id="$(jq -r '.[0]' <<<"$mandate_json")"
+    next_charge="$(jq -r '.[4]' <<<"$mandate_json")"
+    canceled="$(jq -r '.[6]' <<<"$mandate_json")"
+
+    if [[ "$canceled" == "true" || "$next_charge" == "0" || "$next_charge" -gt "$now" ]]; then
+      continue
+    fi
+
+    plan_json="$(cast call "$STANDING_ADDRESS" 'plan(uint256)(address,uint256,uint256,uint32,bool)' "$plan_id" --rpc-url "$COSTON2_RPC" --json)"
+    plan_active="$(jq -r '.[4]' <<<"$plan_json")"
+    if [[ "$plan_active" != "true" ]]; then
+      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" '{at:($at|tonumber),event:"charge_withheld",mandateId:$mandateId,reason:"plan_inactive"}')"
+      continue
+    fi
+
+    if ! cast call "$STANDING_ADDRESS" 'charge(uint256)' "$mandate_id" --from "$keeper_address" --rpc-url "$COSTON2_RPC" >/dev/null; then
+      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" '{at:($at|tonumber),event:"charge_withheld",mandateId:$mandateId,reason:"simulation_failed"}')"
+      continue
+    fi
+
+    if [[ "$RUN_LIVE" != "1" ]]; then
+      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" '{at:($at|tonumber),event:"charge_ready",mandateId:$mandateId,mode:"dry_run"}')"
+      continue
+    fi
+
+    if tx_output="$(cast send "$STANDING_ADDRESS" 'charge(uint256)' "$mandate_id" --rpc-url "$COSTON2_RPC" --private-key "$KEEPER_PRIVATE_KEY" --gas-limit "$KEEPER_GAS_LIMIT" --json 2>&1)"; then
+      tx_hash="$(jq -r '.transactionHash' <<<"$tx_output")"
+      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" --arg txHash "$tx_hash" '{at:($at|tonumber),event:"charge_confirmed",mandateId:$mandateId,txHash:$txHash}')"
+    else
+      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" '{at:($at|tonumber),event:"charge_failed",mandateId:$mandateId,retry:false}')"
+    fi
+  done
+
+  log_event "$(jq -cn --arg at "$now" --argjson mandateCount "$mandate_count" --arg mode "$([[ "$RUN_LIVE" == "1" ]] && echo live || echo dry_run)" '{at:($at|tonumber),event:"scan_complete",mandateCount:$mandateCount,mode:$mode}')"
+}
+
+scan_once
+while [[ "$mode" == "--loop" ]]; do
+  sleep "$KEEPER_INTERVAL_SECONDS"
+  scan_once
+done

@@ -1,41 +1,149 @@
 # Standing
 
-Standing is a Flare-native recurring-payment protocol for XRPL users using FXRP:
+Standing is recurring billing for XRP users on Flare. A subscriber prepays a
+bounded FXRP mandate, a permissionless keeper charges it on schedule, and the
+subscriber can cancel onchain and recover every unused unit without asking the
+merchant.
 
-- **Prepaid mandate model** (subscriber funds capacity upfront in FXRP)
-- **USD- and FXRP-priced plans** (USD plans resolve via FTSO)
-- Permissionless keeper-triggered `charge`
-- Subscriber `cancel` and `withdrawMandate`
-- Merchant/protocol payout rails with fixed fee split
-- Explicit chain-anchored accounting; no custodian
+[Live Coston2 app](https://standing-flare.vercel.app) ·
+[Evidence](https://standing-flare.vercel.app/evidence) ·
+[Deployed contract](https://coston2-explorer.flare.network/address/0x8a29c741280554028d76666dc75558d98caab855)
 
-## Scope and claim boundaries
+## Why Flare is load-bearing
 
-This is an EVM-side billing layer. XRPL-to-Flare mint path is used for onboarding and funding in production scenarios, but the core billing is non-custodial and contract-controlled after funds are in the mandate.
+- **FAssets:** XRPL users can direct-mint XRP into FXRP, the asset held by each
+  mandate.
+- **FTSO:** merchants can price plans in USD while the charge resolves to FXRP
+  at execution time.
+- **Flare smart accounts:** the validated direct-mint path bound an XRPL sender
+  to a Flare account before minting.
+- **Coston2 settlement:** plan terms, prepaid capacity, charges, cancellation,
+  refunds, merchant accruals, and fees are enforced by the deployed contract.
 
-## Core flow
+Remove Flare and the asset path, price conversion, and settlement loop all
+disappear.
 
-1. Merchant creates its own plan (`createPlan`) with price, period, and active flag.
-2. Subscriber opens a mandate (`openMandate`) and deposits FXRP once.
-3. Keeper/agent calls `charge` when `nextChargeAt` is reached.
-4. The contract applies the protocol fee and credits merchant/protocol balances.
-5. Subscriber must `cancel`; future charges are blocked and remaining funds can then be withdrawn.
+## Try the product
 
-Merchant plan activation is controlled by the plan's merchant, not the protocol owner. Deposits and withdrawals require exact token balance deltas, so fee-on-transfer and otherwise non-conserving token behavior is rejected instead of creating unbacked accounting.
+The public app has five operating surfaces plus shareable checkout and access
+routes:
 
-## Contract surface
+- `/plans` discovers live merchant plans.
+- `/checkout/:planId` opens a bounded prepaid mandate.
+- `/mandates` manages top-ups, cancellation, refunds, and due charges.
+- `/access/:mandateId` demonstrates an entitlement derived from the latest
+  successful charge.
+- `/merchant` creates plans and withdraws completed charges.
+- `/evidence` links the deployment, lifecycle, FTSO, and direct-mint receipts.
 
-- Core protocol: `src/StandingMandates.sol`
-- FTSO adapter: `src/FtsoPriceAdapter.sol`
-- Deploy scripts: `script/DeployFtsoAdapter.s.sol`, `script/DeployStanding.s.sol`, `script/ChargeKeeper.s.sol`
-- Tests: `test/Standing.t.sol`
+The two current catalog entries are controlled Coston2 pilot fixtures, not
+external merchant adoption. Curated names are accepted only when the cataloged
+merchant address matches the plan's onchain merchant; every other plan falls
+back to neutral onchain labeling.
 
-## Web application
+## Protocol flow
 
-The `app/` directory contains the multi-route Coston2 application for
-subscribers, merchants, and permissionless keepers. It reads the deployed
-protocol directly and simulates every write before requesting a wallet
-signature.
+1. A merchant creates a fixed-FXRP or USD-priced plan.
+2. A subscriber approves FXRP and opens a mandate with a chosen capacity.
+3. Any keeper calls `charge` at `nextChargeAt`.
+4. A successful charge credits the merchant and protocol fee ledgers. An
+   underfunded charge is blocked and advances the schedule without creating
+   debt.
+5. The subscriber can cancel at any time. Later charges revert, and the unused
+   balance becomes withdrawable.
+
+The protocol is non-custodial in the operational sense that no merchant or
+operator can withdraw subscriber capacity. Funds are held by the contract until
+a valid scheduled charge or subscriber refund.
+
+## Verify in sixty seconds
+
+```bash
+git clone https://github.com/dolepee/flare-standing.git
+cd flare-standing
+
+forge fmt --check
+forge test
+forge coverage --report summary
+
+cd app
+npm ci
+npm run lint
+npm test
+npm run build
+```
+
+The stateful invariant suite exercises 256 runs and 128,000 calls per
+invariant. It checks that token custody always equals outstanding mandate
+capacity plus merchant and protocol liabilities, and that no mandate's
+remaining balance exceeds its recorded deposits.
+
+## Keeper operation
+
+`script/standing-keeper.sh` is the supervised keeper entry point. It verifies
+chain ID 114, reads the latest chain timestamp, discovers due active mandates,
+and simulates every candidate before any write.
+
+Read-only scan, which requires no key:
+
+```bash
+script/standing-keeper.sh --once
+```
+
+An explicit live run requires `RUN_LIVE=1` and a dedicated
+`KEEPER_PRIVATE_KEY`. A failed transaction is logged and is not retried within
+the same scan. `--loop` uses a process lock to prevent duplicate local workers.
+No keeper service is installed or activated by this repository.
+
+## Current Coston2 deployment
+
+| Component | Address |
+|---|---|
+| Standing | `0x8a29c741280554028d76666dc75558d98caab855` |
+| FTSO adapter | `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8` |
+| FTestXRP | `0x0b6a3645c240605887a5532109323A3E12273dc7` |
+
+The controlled validation proves:
+
+- fixed-FXRP and live FTSO-priced charges;
+- top-up, cancellation, post-cancel rejection, and exact refund;
+- merchant and protocol withdrawals;
+- insufficient-capacity blocking;
+- an XRPL testnet direct mint that produced 10 FXRP on Coston2 in 153 observed
+  seconds.
+
+Every transaction and the exact claim boundary is recorded in
+[`docs/VALIDATION_LOG.md`](docs/VALIDATION_LOG.md). This is builder-controlled
+testnet evidence. External merchant and subscriber validation is still open.
+
+## Architecture
+
+- `src/StandingMandates.sol`: plan, mandate, charge, cancellation, and ledger
+  state machine.
+- `src/FtsoPriceAdapter.sol`: USD-micro to FXRP conversion through FTSO.
+- `script/standing-keeper.sh`: read-only-by-default supervised keeper.
+- `app/`: Vite/React Coston2 application.
+- `test/`: regression, adversarial token, boundary, and stateful invariant
+  coverage.
+- `docs/SECURITY_NOTES.md`: internal hardening notes and residual trust
+  boundaries.
+
+## Security boundaries
+
+- Merchant plan control is scoped to the merchant wallet.
+- Subscriber cancellation does not depend on the merchant or owner.
+- The owner can pause openings, top-ups, and charges, but cannot cancel for a
+  subscriber or withdraw subscriber funds.
+- Exact pre/post token balances reject fee-on-transfer and non-conserving token
+  behavior.
+- Cross-function reentrancy protection covers token and oracle callbacks.
+- FTSO-priced charges reject future or stale price timestamps.
+- The web entitlement is a reference integration. Protected merchant content
+  should be enforced server-side after wallet authentication.
+- This repository has undergone internal adversarial testing, not an
+  independent external audit.
+
+## Local development
 
 ```bash
 cd app
@@ -43,7 +151,7 @@ npm ci
 npm run dev
 ```
 
-Frontend gates:
+Frontend release gates:
 
 ```bash
 npm run lint
@@ -52,166 +160,15 @@ npm run build
 npm run test:browser
 ```
 
-## Local gates
-
-- `forge fmt`
-- `forge build`
-- `forge test`
-- `forge coverage --report lcov`
-
-## 48-hour Coston2 spike (live)
-
-- Standing: `0x8a29c741280554028d76666dc75558d98caab855`
-- FTSO adapter: `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8`
-- FTestXRP: `0x0b6a3645c240605887a5532109323A3E12273dc7`
-- XRPL direct mint: `10 XRP` reached an XRPL-derived Flare smart account as
-  `10 FXRP` through the official tagged direct-mint flow (`153s` observed)
-- Exact deployment and lifecycle receipts: `docs/VALIDATION_LOG.md`
-
-The objective is a complete on-chain loop on Coston2:
-
-1. deploy adapter
-2. deploy standing protocol
-3. create plan
-4. open mandate
-5. charge once
-6. top-up
-7. cancel
-8. blocked / failed charge attempt on canceled line
-
-Prerequisites:
-
-- funded Coston2 signer
-- `PRIVATE_KEY` with funds for deployment and tx gas
-- `ACCOUNT_ADDRESS` matching the key
-- `FTESTXRP_TOKEN_ADDR` filled with a valid 40-hex-character Coston2 asset address
-  (`0x0b6a3645c240605887a5532109323A3E12273dc7`)
-- `TREASURY_ADDR` and merchant addresses for test assertions
-
-Execution template:
+Solidity release gates:
 
 ```bash
-# 0) sanity: set these from one source before running
-export COSTON2_RPC=https://coston2-api.flare.network/ext/C/rpc
-export FTSO_V2_ADDR=0x3d893C53D9e8056135C26C8c638B76C8b60Df726
-export FXRP_TOKEN_ADDR=$FTESTXRP_TOKEN_ADDR
-
-# 1) deploy adapter (dry run first)
-forge script script/DeployFtsoAdapter.s.sol:DeployFtsoAdapter \
-  --sig "run(address,uint8)" $FTSO_V2_ADDR 6 \
-  --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-
-# 2) broadcast once ready
-forge script ... --broadcast > /tmp/flare-ftso-rt.json
-
-# 3) deploy standing
-forge script script/DeployStanding.s.sol:DeployStanding \
-  --sig "run(address,address,address,uint16,uint256)" \
-  $FXRP_TOKEN_ADDR <FTSO_ADAPTER_ADDRESS> $TREASURY_ADDR 100 300 \
-  --rpc-url "$COSTON2_RPC" --private-key "$PRIVATE_KEY"
-
-# 4) open live hardhat/etherscan/forge interaction script (or manual CLI) for:
-#    - createPlan
-#    - openMandate
-#    - charge (wait/readiness first)
-#    - topUp
-#    - cancel
-#    - charge (expect NotReady / insufficient state on canceled line)
+forge fmt --check
+forge build --sizes
+forge test
+forge coverage --report summary
 ```
 
-Use the checked runner for shared or previously used deployments. It snapshots
-`planCount` and `mandateCount`, derives the IDs created by the current run, and
-stops if either counter advances unexpectedly. Do not substitute hardcoded IDs
-on a shared deployment.
+## License
 
-```bash
-export COSTON2_RPC=https://coston2-api.flare.network/ext/C/rpc
-export FTSO_V2_ADDR=0x3d893C53D9e8056135C26C8c638B76C8b60Df726
-export FTESTXRP_TOKEN_ADDR=0x0b6a3645c240605887a5532109323A3E12273dc7
-export FTSO_ADAPTER_ADDRESS=0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8
-export STANDING_ADDRESS=0x8a29c741280554028d76666dc75558d98caab855
-export TREASURY_ADDR="$ACCOUNT_ADDRESS"
-export TX_GAS_LIMIT=800000
-
-# Estimate only; no state changes.
-RUN_LIVE=0 bash script/coston2-live-loop.sh
-
-# Broadcast one complete lifecycle after checking the dry run.
-RUN_LIVE=1 bash script/coston2-live-loop.sh
-```
-
-The explicit gas limit avoids a Coston2 FTestXRP proxy under-estimation observed
-during validation while actual gas usage remains metered normally.
-
-Capture tx hashes, addresses, and final balances into `docs/VALIDATION_LOG.md`.
-
-## Deployment workflow (example)
-
-```bash
-cd /path/to/flare-standing
-
-export FLARE_RPC_URL=<flare-rpc-url>
-export FTSO_V2_ADDR=<FTSO-v2-feed-contract>
-export FXRP_TOKEN_ADDR=<FXRP-or-FTestXRP>
-export FTSO_ADAPTER_ADDR=<deployed-ftso-adapter>
-export TREASURY_ADDR=<treasury-wallet>
-export PRIVATE_KEY=<deployer-key>
-
-forge script script/DeployFtsoAdapter.s.sol:DeployFtsoAdapter \
-  --sig "run(address,uint8)" \
-  $FTSO_V2_ADDR 6 \
-  --rpc-url "$FLARE_RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
-  --broadcast
-
-forge script script/DeployStanding.s.sol:DeployStanding \
-  --sig "run(address,address,address,uint16,uint256)" \
-  $FXRP_TOKEN_ADDR \
-  $FTSO_ADAPTER_ADDR \
-  $TREASURY_ADDR \
-  100 \
-  300 \
-  --rpc-url "$FLARE_RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
-  --broadcast
-```
-
-## Keeper / keeper-like operation
-
-Use `ChargeKeeper` for dry-runs and post-deploy validation:
-
-```bash
-forge script script/ChargeKeeper.s.sol:ChargeKeeper \
-  --sig "run(address,uint256)" \
-  <STANDING_ADDRESS> <MANDATE_ID> \
-  --rpc-url "$FLARE_RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
-  --broadcast
-```
-
-Batch mode:
-
-```bash
-forge script script/ChargeKeeper.s.sol:ChargeKeeper \
-  --sig "runBatch(address,uint256[])" \
-  <STANDING_ADDRESS> "[1,2,3]" \
-  --rpc-url "$FLARE_RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
-  --broadcast
-```
-
-## Validation log
-
-Track the 48-hour spike and mainnet proof here:
-
-- `docs/VALIDATION_LOG.md`
-
-The validation log separates the historical spike from the current hardened
-Coston2 deployment and records the XRPL direct-mint evidence. See
-`docs/SECURITY_NOTES.md` for the hardening history.
-
-## Pre-submission hardening
-
-- Add explicit keeper/retry behavior tests around `charge` and stale pricing failures.
-- Add a short public deployment log with txids, addresses, and evidence snapshots.
-- Cut scope aggressively around anything outside the mandate loop.
+MIT. See [`LICENSE`](LICENSE).

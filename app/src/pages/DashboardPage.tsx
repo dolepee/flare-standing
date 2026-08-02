@@ -6,10 +6,11 @@ import { STANDING_ADDRESS } from '../config'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
 import { formatFxrp, runUiAction, shortAddress } from '../lib/format'
+import { getPlanProfile } from '../lib/planCatalog'
 
 export function DashboardPage() {
   const { account, connected } = useWallet()
-  const { state, loading, error, refresh } = useProtocol()
+  const { state, loading, initialized, error, refresh } = useProtocol()
   const ownedMandates = state.mandates.filter((mandate) => mandate.subscriber.toLowerCase() === account?.toLowerCase())
   const dueCount = state.mandates.filter((mandate) => !mandate.canceled && Number(mandate.nextChargeAt) * 1_000 <= Date.now()).length
 
@@ -30,10 +31,10 @@ export function DashboardPage() {
       </section>
 
       <section className="metrics-grid" aria-label="Protocol metrics">
-        <Metric label="Active plans" value={state.plans.filter((plan) => plan.active).length.toString()} detail={`${state.planCount} created`} />
-        <Metric label="Mandates" value={state.mandateCount.toString()} detail={`${dueCount} ready to charge`} />
-        <Metric label="Protocol custody" value={`${formatFxrp(state.contractBalance)} FXRP`} detail="Prepaid user capacity" />
-        <Metric label="Protocol fee" value={`${state.feeBps / 100}%`} detail="Per successful charge" />
+        <Metric label="Active plans" value={initialized ? state.plans.filter((plan) => plan.active).length.toString() : '—'} detail={initialized ? `${state.planCount} created` : 'Reading Coston2'} />
+        <Metric label="Mandates" value={initialized ? state.mandateCount.toString() : '—'} detail={initialized ? `${dueCount} ready to charge` : 'Reading Coston2'} />
+        <Metric label="Protocol custody" value={initialized ? `${formatFxrp(state.contractBalance)} FXRP` : '—'} detail="Prepaid user capacity" />
+        <Metric label="Protocol fee" value={initialized ? `${state.feeBps / 100}%` : '—'} detail="Per successful charge" />
       </section>
 
       <section className="dashboard-band">
@@ -69,8 +70,8 @@ export function DashboardPage() {
           <code>{shortAddress(STANDING_ADDRESS)}</code>
           <dl>
             <div><dt>Network</dt><dd>Coston2 · 114</dd></div>
-            <div><dt>Status</dt><dd>{state.paused ? 'Paused' : 'Accepting mandates'}</dd></div>
-            <div><dt>Price freshness</dt><dd>{state.maxPriceAge.toString()}s max</dd></div>
+            <div><dt>Status</dt><dd>{!initialized ? 'Checking' : state.paused ? 'Paused' : 'Accepting mandates'}</dd></div>
+            <div><dt>Price freshness</dt><dd>{initialized ? `${state.maxPriceAge.toString()}s max` : 'Checking'}</dd></div>
           </dl>
           <Link className="button button-secondary" to="/evidence">Inspect evidence</Link>
         </aside>
@@ -83,8 +84,8 @@ export function DashboardPage() {
         </div>
         <div className="compact-plan-list">
           {state.plans.slice(0, 3).map((plan) => (
-            <Link to="/plans" key={plan.id.toString()}>
-              <span>Plan #{plan.id.toString()}</span>
+            <Link to={`/checkout/${plan.id.toString()}`} key={plan.id.toString()}>
+              <span>{getPlanProfile(plan).name}</span>
               <strong>{plan.priceUsdMicro > 0n ? `$${Number(plan.priceUsdMicro) / 1_000_000}` : `${formatFxrp(plan.priceFxrp)} FXRP`}</strong>
               <Status tone={plan.active ? 'good' : 'warning'}>{plan.active ? 'Active' : 'Paused'}</Status>
             </Link>

@@ -1,0 +1,98 @@
+import { ArrowLeft, CheckCircle2, Clock3, LockKeyhole, ReceiptText, ShieldX } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
+import { Status } from '../components/Status'
+import { useProtocol } from '../context/ProtocolContext'
+import { useWallet } from '../context/WalletContext'
+import { entitlementState } from '../lib/entitlement'
+import { formatTime, isSameAddress, runUiAction, shortAddress } from '../lib/format'
+import { getPlanProfile } from '../lib/planCatalog'
+
+const stateCopy = {
+  active: { label: 'Access active', tone: 'good' as const, title: 'Membership verified', detail: 'The latest scheduled charge is inside its paid access window.', icon: CheckCircle2 },
+  awaiting_first_charge: { label: 'Charge pending', tone: 'muted' as const, title: 'Waiting for first payment', detail: 'The mandate is funded. Access starts after its first successful scheduled charge.', icon: Clock3 },
+  payment_due: { label: 'Payment due', tone: 'warning' as const, title: 'Access paused', detail: 'The next scheduled charge is due and must succeed before access resumes.', icon: LockKeyhole },
+  canceled: { label: 'Canceled', tone: 'warning' as const, title: 'Access ended', detail: 'The subscriber canceled this mandate onchain. No later charge can restore access.', icon: ShieldX },
+}
+
+export function AccessPage() {
+  const { mandateId } = useParams()
+  const { account, connected, connect } = useWallet()
+  const { state, loading, initialized, error, refresh } = useProtocol()
+  const mandate = state.mandates.find((candidate) => candidate.id.toString() === mandateId)
+  const plan = mandate ? state.plans.find((candidate) => candidate.id === mandate.planId) : undefined
+  const profile = getPlanProfile(plan)
+
+  if (!initialized && loading) {
+    return <div className="page route-loading" aria-live="polite">Verifying mandate on Coston2…</div>
+  }
+
+  if (!initialized && error) {
+    return (
+      <div className="page route-failure" role="alert">
+        <ShieldX aria-hidden="true" />
+        <h1>Coston2 data is temporarily unavailable.</h1>
+        <p>No access decision has been made. Retry the onchain read before continuing.</p>
+        <button className="button button-secondary" type="button" onClick={() => runUiAction(refresh())}>Retry mandate read</button>
+      </div>
+    )
+  }
+
+  if (!mandate || !plan) {
+    return (
+      <div className="page not-found">
+        <span>MANDATE NOT FOUND</span>
+        <h1>No onchain mandate matches this access link.</h1>
+        <Link className="button button-secondary" to="/mandates">Back to mandates</Link>
+      </div>
+    )
+  }
+
+  const entitlement = entitlementState(mandate)
+  const copy = stateCopy[entitlement]
+  const Icon = copy.icon
+  const ownsMandate = isSameAddress(account, mandate.subscriber)
+  const unlocked = entitlement === 'active' && ownsMandate
+
+  return (
+    <div className="page access-page">
+      <Link className="back-link" to="/mandates"><ArrowLeft size={15} aria-hidden="true" /> Mandates</Link>
+      <section className="access-heading">
+        <div>
+          <span className="eyebrow">{profile.merchantName}</span>
+          <h1>{profile.accessTitle}</h1>
+          <p>{profile.accessSummary}</p>
+        </div>
+        <Status tone={copy.tone}>{copy.label}</Status>
+      </section>
+      <section className="access-layout">
+        <div className={unlocked ? 'entitlement-content content-unlocked' : 'entitlement-content content-locked'}>
+          <div className="entitlement-state-icon"><Icon aria-hidden="true" /></div>
+          <span className="eyebrow">Mandate-backed access</span>
+          <h2>{unlocked ? 'The latest edition is unlocked.' : copy.title}</h2>
+          {unlocked ? (
+            <div className="member-edition">
+              <span>ISSUE 01 · COSTON2</span>
+              <h3>Recurring XRP payments without custodial billing credentials</h3>
+              <p>Standing keeps the spending boundary in a subscriber-owned mandate. Merchants can collect on schedule, while the subscriber retains the right to cancel and recover unused FXRP.</p>
+            </div>
+          ) : (
+            <p>{ownsMandate || !connected ? copy.detail : 'Connect the subscriber wallet to open this paid edition.'}</p>
+          )}
+          {!connected ? <button className="button button-primary" type="button" onClick={() => runUiAction(connect())}>Connect subscriber wallet</button> : null}
+        </div>
+        <aside className="entitlement-receipt">
+          <div className="section-title"><div><span className="eyebrow">Live receipt</span><h2>Mandate #{mandate.id.toString()}</h2></div><ReceiptText aria-hidden="true" /></div>
+          <dl>
+            <div><dt>Subscriber</dt><dd title={mandate.subscriber}>{shortAddress(mandate.subscriber)}</dd></div>
+            <div><dt>Plan</dt><dd>#{mandate.planId.toString()} · {profile.name}</dd></div>
+            <div><dt>Last paid</dt><dd>{mandate.lastChargeAt > 0n ? formatTime(mandate.lastChargeAt) : 'Not charged'}</dd></div>
+            <div><dt>Next charge</dt><dd>{formatTime(mandate.nextChargeAt)}</dd></div>
+            <div><dt>Cancellation</dt><dd>{mandate.canceled ? 'Final onchain' : 'Available to subscriber'}</dd></div>
+          </dl>
+          <a className="button button-secondary" href={`https://coston2-explorer.flare.network/address/${mandate.subscriber}`} target="_blank" rel="noreferrer">Inspect subscriber</a>
+        </aside>
+      </section>
+      <p className="reference-note">This reference access surface reads the deployed mandate directly. Production merchants should enforce protected content server-side after wallet authentication.</p>
+    </div>
+  )
+}

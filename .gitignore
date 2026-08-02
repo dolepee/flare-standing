@@ -1,5 +1,6 @@
 # Compiler files
 cache/
+.standing/
 out/
 
 # Commonly ignored directories

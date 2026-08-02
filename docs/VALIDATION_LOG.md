@@ -1,6 +1,6 @@
 # STANDING — 48-Hour Validation Log
 
-Last updated: 2026-07-21
+Last updated: 2026-08-02
 
 Project: `Standing` (Flare recurring payments / prepaid mandates)
 
@@ -40,6 +40,20 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
     - value=`1133595000000000000`, timestamp=`1784628281`
 
 ## Deployment and live trace (Coston2)
+
+### Source-to-deployment reproducibility check
+
+On 2026-08-02, the current source was compiled with the pinned Solidity
+`0.8.28` configuration. For both live deployments, the compiled creation
+bytecode plus ABI-encoded constructor arguments matched the original deployment
+transaction input byte-for-byte:
+
+- `StandingMandates`: `DEPLOYMENT_SOURCE_MATCH=true` (`15,228` creation bytes)
+- `FtsoUsdToFxrpAdapter`: `ADAPTER_SOURCE_MATCH=true` (`2,649` creation bytes)
+
+This proves repository/deployment source equivalence. It is not a claim that
+the explorer has published or independently verified the source; Blockscout
+source publication remains a release operation.
 
 ### Historical spike deployment (historical proof path)
 
