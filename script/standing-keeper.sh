@@ -67,6 +67,7 @@ if command -v flock >/dev/null 2>&1; then
   fi
 elif command -v lockf >/dev/null 2>&1; then
   exec 9>"$lock_file"
+  # macOS lockf supports locking an already-open descriptor until it closes.
   if ! lockf -s -t 0 9; then
     echo "Another keeper process holds $lock_file" >&2
     exit 1

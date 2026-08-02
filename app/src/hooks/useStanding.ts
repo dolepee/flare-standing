@@ -59,9 +59,8 @@ export function useStanding(account?: Address) {
 
     setLoading(true)
     try {
-      const [latestBlock, planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
+      const [planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
         await Promise.all([
-          publicClient.getBlock({ blockTag: 'latest' }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'planCount' }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'mandateCount' }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'contractBalance' }),
@@ -135,6 +134,7 @@ export function useStanding(account?: Address) {
         lastChargeAt: mandate[5],
         canceled: mandate[6],
       }))
+      const latestBlock = await publicClient.getBlock({ blockTag: 'latest' })
 
       if (!isCurrentRequest()) return
       setError(undefined)
