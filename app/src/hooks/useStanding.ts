@@ -24,6 +24,7 @@ type ProtocolState = {
   walletBalance: bigint
   walletAllowance: bigint
   merchantBalance: bigint
+  walletAccount?: Address
 }
 
 const emptyState: ProtocolState = {
@@ -152,6 +153,7 @@ export function useStanding(account?: Address) {
         walletBalance,
         walletAllowance,
         merchantBalance,
+        walletAccount: account,
       })
       setInitialized(true)
     } catch (nextError) {
@@ -165,5 +167,12 @@ export function useStanding(account?: Address) {
     void refresh()
   }, [refresh])
 
-  return { state, loading, initialized, error, refresh }
+  const walletSnapshotCurrent = account
+    ? state.walletAccount?.toLowerCase() === account.toLowerCase()
+    : state.walletAccount === undefined
+  const currentState = walletSnapshotCurrent
+    ? state
+    : { ...state, walletBalance: 0n, walletAllowance: 0n, merchantBalance: 0n }
+
+  return { state: currentState, loading, initialized, error, refresh }
 }

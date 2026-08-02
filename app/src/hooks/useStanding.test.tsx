@@ -67,6 +67,7 @@ describe('useStanding', () => {
 
   it('does not commit account balances from a stale refresh', async () => {
     const oldBalance = deferred<bigint>()
+    const newBalance = deferred<bigint>()
     mocks.readContract.mockImplementation((input) => {
       if (!input) return 0n
       const { functionName, args = [] } = input
@@ -75,7 +76,7 @@ describe('useStanding', () => {
       if (functionName === 'feeBps') return 0
       if (functionName === 'maxPriceAge') return 60n
       if (functionName === 'treasury') return zeroAddress
-      if (functionName === 'balanceOf') return args[0] === accountA ? oldBalance.promise : 2_000_000n
+      if (functionName === 'balanceOf') return args[0] === accountA ? oldBalance.promise : newBalance.promise
       if (functionName === 'allowance') return args[0] === accountA ? 1n : 2n
       if (functionName === 'merchantBalance') return args[0] === accountA ? 10n : 20n
       throw new Error(`Unexpected read: ${functionName}`)
@@ -86,6 +87,11 @@ describe('useStanding', () => {
       { initialProps: { account: accountA } },
     )
     rerender({ account: accountB })
+    expect(result.current.state.walletBalance).toBe(0n)
+    expect(result.current.state.walletAllowance).toBe(0n)
+    expect(result.current.state.merchantBalance).toBe(0n)
+
+    await act(async () => newBalance.resolve(2_000_000n))
 
     await waitFor(() => expect(result.current.state.walletBalance).toBe(2_000_000n))
     await act(async () => oldBalance.resolve(1_000_000n))
