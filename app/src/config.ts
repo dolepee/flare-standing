@@ -20,7 +20,7 @@ export const coston2 = defineChain({
 })
 
 export const STANDING_ADDRESS = '0x8a29c741280554028d76666dc75558d98caab855' as const
-export const FXRP_ADDRESS = '0x0b6a3645c240605887a5532109323A3E12273dc7' as const
+export const FXRP_ADDRESS = '0x0b6A3645c240605887a5532109323A3E12273dc7' as const
 export const FTSO_ADAPTER_ADDRESS = '0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8' as const
 
 export const DEPLOY_BLOCK = 33_098_682n
