@@ -56,7 +56,6 @@ export function useStanding(account?: Address) {
       requestId === requestIdRef.current && requestedAccount === accountRef.current?.toLowerCase()
 
     setLoading(true)
-    setError(undefined)
     try {
       const [planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
         await Promise.all([
@@ -135,6 +134,7 @@ export function useStanding(account?: Address) {
       }))
 
       if (!isCurrentRequest()) return
+      setError(undefined)
       setState({
         planCount,
         mandateCount,

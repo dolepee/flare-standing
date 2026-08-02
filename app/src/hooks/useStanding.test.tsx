@@ -24,6 +24,42 @@ function deferred<T>() {
 describe('useStanding', () => {
   beforeEach(() => mocks.readContract.mockReset())
 
+  it('keeps a failed read fail-closed until a retry commits successfully', async () => {
+    const retryPlanCount = deferred<bigint>()
+    let initialAttempt = true
+    mocks.readContract.mockImplementation((input) => {
+      if (!input) return 0n
+      const { functionName } = input
+      if (functionName === 'planCount') {
+        if (initialAttempt) return Promise.reject(new Error('RPC unavailable'))
+        return retryPlanCount.promise
+      }
+      if (functionName === 'mandateCount' || functionName === 'contractBalance') return 0n
+      if (functionName === 'paused') return false
+      if (functionName === 'feeBps') return 0
+      if (functionName === 'maxPriceAge') return 60n
+      if (functionName === 'treasury') return zeroAddress
+      throw new Error(`Unexpected read: ${functionName}`)
+    })
+
+    const { result } = renderHook(() => useStanding())
+    await waitFor(() => expect(result.current.error).toContain('RPC unavailable'))
+
+    initialAttempt = false
+    let retry!: Promise<void>
+    act(() => {
+      retry = result.current.refresh()
+    })
+    expect(result.current.error).toContain('RPC unavailable')
+
+    await act(async () => {
+      retryPlanCount.resolve(0n)
+      await retry
+    })
+    expect(result.current.error).toBeUndefined()
+    expect(result.current.initialized).toBe(true)
+  })
+
   it('does not commit account balances from a stale refresh', async () => {
     const oldBalance = deferred<bigint>()
     mocks.readContract.mockImplementation((input) => {

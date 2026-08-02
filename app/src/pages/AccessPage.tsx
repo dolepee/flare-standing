@@ -33,14 +33,37 @@ export function AccessPage() {
   }, [])
 
   useEffect(() => {
-    const sync = () => {
-      if (document.visibilityState === 'visible') void refresh()
+    let stopped = false
+    let timer: number | undefined
+    let inFlight: Promise<void> | undefined
+
+    const runRefresh = () => {
+      if (inFlight) return inFlight
+      inFlight = refresh().finally(() => {
+        inFlight = undefined
+      })
+      return inFlight
     }
-    const timer = window.setInterval(sync, 10_000)
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        const result = document.visibilityState === 'visible' ? runRefresh() : Promise.resolve()
+        void result.finally(() => {
+          if (!stopped) schedule()
+        })
+      }, 10_000)
+    }
+    const sync = () => {
+      if (document.visibilityState === 'visible') void runRefresh()
+    }
+
+    void runRefresh().finally(() => {
+      if (!stopped) schedule()
+    })
     window.addEventListener('focus', sync)
     document.addEventListener('visibilitychange', sync)
     return () => {
-      window.clearInterval(timer)
+      stopped = true
+      if (timer !== undefined) window.clearTimeout(timer)
       window.removeEventListener('focus', sync)
       document.removeEventListener('visibilitychange', sync)
     }
@@ -50,7 +73,7 @@ export function AccessPage() {
     return <div className="page route-loading" aria-live="polite">Verifying mandate on Coston2…</div>
   }
 
-  if (!initialized && error) {
+  if (error) {
     return (
       <div className="page route-failure" role="alert">
         <ShieldX aria-hidden="true" />
