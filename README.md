@@ -101,7 +101,7 @@ No keeper service is installed or activated by this repository.
 |---|---|
 | Standing | `0x8a29c741280554028d76666dc75558d98caab855` |
 | FTSO adapter | `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8` |
-| FTestXRP | `0x0b6a3645c240605887a5532109323A3E12273dc7` |
+| FTestXRP | `0x0b6A3645c240605887a5532109323A3E12273dc7` |
 
 The controlled validation proves:
 
