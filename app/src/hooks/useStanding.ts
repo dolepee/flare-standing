@@ -11,6 +11,7 @@ import { publicClient } from '../lib/chain'
 import { errorMessage } from '../lib/format'
 
 type ProtocolState = {
+  chainTimestamp: bigint
   planCount: bigint
   mandateCount: bigint
   contractBalance: bigint
@@ -23,9 +24,11 @@ type ProtocolState = {
   walletBalance: bigint
   walletAllowance: bigint
   merchantBalance: bigint
+  walletAccount?: Address
 }
 
 const emptyState: ProtocolState = {
+  chainTimestamp: 0n,
   planCount: 0n,
   mandateCount: 0n,
   contractBalance: 0n,
@@ -43,6 +46,7 @@ const emptyState: ProtocolState = {
 export function useStanding(account?: Address) {
   const [state, setState] = useState(emptyState)
   const [loading, setLoading] = useState(true)
+  const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string>()
   const requestIdRef = useRef(0)
   const accountRef = useRef(account)
@@ -55,7 +59,6 @@ export function useStanding(account?: Address) {
       requestId === requestIdRef.current && requestedAccount === accountRef.current?.toLowerCase()
 
     setLoading(true)
-    setError(undefined)
     try {
       const [planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
         await Promise.all([
@@ -132,9 +135,12 @@ export function useStanding(account?: Address) {
         lastChargeAt: mandate[5],
         canceled: mandate[6],
       }))
+      const latestBlock = await publicClient.getBlock({ blockTag: 'latest' })
 
       if (!isCurrentRequest()) return
+      setError(undefined)
       setState({
+        chainTimestamp: latestBlock.timestamp,
         planCount,
         mandateCount,
         contractBalance,
@@ -147,7 +153,9 @@ export function useStanding(account?: Address) {
         walletBalance,
         walletAllowance,
         merchantBalance,
+        walletAccount: account,
       })
+      setInitialized(true)
     } catch (nextError) {
       if (isCurrentRequest()) setError(errorMessage(nextError))
     } finally {
@@ -159,5 +167,12 @@ export function useStanding(account?: Address) {
     void refresh()
   }, [refresh])
 
-  return { state, loading, error, refresh }
+  const walletSnapshotCurrent = account
+    ? state.walletAccount?.toLowerCase() === account.toLowerCase()
+    : state.walletAccount === undefined
+  const currentState = walletSnapshotCurrent
+    ? state
+    : { ...state, walletBalance: 0n, walletAllowance: 0n, merchantBalance: 0n }
+
+  return { state: currentState, loading, initialized, error, refresh }
 }

@@ -36,3 +36,8 @@ jobs:
 
       - name: Run Forge coverage
         run: forge coverage --report lcov
+
+      - name: Check keeper script syntax
+        run: |
+          bash -n script/standing-keeper.sh
+          script/test-standing-keeper.sh

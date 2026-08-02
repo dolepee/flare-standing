@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-for (const path of ['/', '/plans', '/mandates', '/merchant', '/evidence']) {
+for (const path of ['/', '/plans', '/checkout/2', '/mandates', '/access/2', '/merchant', '/evidence']) {
   test(`${path} renders without horizontal overflow`, async ({ page }) => {
     const errors: string[] = []
     const failedRequests: string[] = []
@@ -8,7 +8,7 @@ for (const path of ['/', '/plans', '/mandates', '/merchant', '/evidence']) {
       if (message.type() === 'error') errors.push(message.text())
     })
     page.on('requestfailed', (request) => {
-      if (new URL(request.url()).origin === 'http://127.0.0.1:4173') {
+      if (new URL(request.url()).origin === new URL(page.url()).origin) {
         failedRequests.push(`${request.method()} ${request.url()}`)
       }
     })
@@ -22,6 +22,20 @@ for (const path of ['/', '/plans', '/mandates', '/merchant', '/evidence']) {
     expect(failedRequests).toEqual([])
   })
 }
+
+test('named checkout resolves against the live onchain plan', async ({ page }) => {
+  await page.goto('/checkout/2')
+  await expect(page.getByRole('heading', { name: 'FTSO Creator Pass' })).toBeVisible()
+  await expect(page.getByText('Controlled pilot')).toBeVisible()
+  await expect(page.getByRole('complementary').getByRole('button', { name: 'Connect wallet' })).toBeVisible()
+})
+
+test('canceled mandate keeps the reference entitlement locked', async ({ page }) => {
+  await page.goto('/access/2')
+  await expect(page.getByRole('heading', { name: 'Creator member dispatch' })).toBeVisible()
+  await expect(page.getByText('Access ended')).toBeVisible()
+  await expect(page.getByText('The latest edition is unlocked.')).toHaveCount(0)
+})
 
 test.describe('mobile navigation', () => {
   test.use({ viewport: { width: 390, height: 844 } })

@@ -24,7 +24,7 @@ const navItems = [
 
 export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const { state } = useProtocol()
+  const { state, initialized } = useProtocol()
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -42,7 +42,7 @@ export function Layout() {
         <div className="topbar-actions">
           <span className={state.paused ? 'network-state network-paused' : 'network-state'}>
             <span aria-hidden="true" />
-            {state.paused ? 'Paused' : 'Live'}
+            {!initialized ? 'Checking' : state.paused ? 'Paused' : 'Live'}
           </span>
           <WalletButton />
           <button
@@ -69,4 +69,3 @@ export function Layout() {
     </div>
   )
 }
-

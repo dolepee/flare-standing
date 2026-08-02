@@ -1,5 +1,6 @@
-import { Ban, CircleDollarSign, RotateCcw, Zap } from 'lucide-react'
+import { Ban, CircleDollarSign, KeyRound, RotateCcw, Zap } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import { erc20Abi, standingAbi, type StandingMandate, type StandingPlan } from '../contracts'
 import { useProtocol } from '../context/ProtocolContext'
@@ -64,6 +65,9 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
         <div><dt>Price</dt><dd>{plan?.priceUsdMicro ? `$${Number(plan.priceUsdMicro) / 1_000_000}` : `${formatFxrp(plan?.priceFxrp ?? 0n)} FXRP`}</dd></div>
       </dl>
       <div className="mandate-actions">
+        <Link className="button button-primary" to={`/access/${mandate.id.toString()}`}>
+          <KeyRound size={15} aria-hidden="true" /> View access
+        </Link>
         {!mandate.canceled ? (
           <button className="button button-secondary" type="button" disabled={!due || !account} onClick={() => runUiAction(action('charge', `Charge mandate #${mandate.id}`))}>
             <Zap size={15} aria-hidden="true" /> Run charge
