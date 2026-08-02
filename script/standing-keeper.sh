@@ -58,12 +58,23 @@ if [[ "$RUN_LIVE" == "1" ]]; then
 fi
 
 mkdir -p "$(dirname "$KEEPER_LOG_PATH")"
-lock_dir="${KEEPER_LOG_PATH}.lock"
-if ! mkdir "$lock_dir" 2>/dev/null; then
-  echo "Another keeper process holds $lock_dir" >&2
+lock_file="${KEEPER_LOG_PATH}.lock"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$lock_file"
+  if ! flock -n 9; then
+    echo "Another keeper process holds $lock_file" >&2
+    exit 1
+  fi
+elif command -v lockf >/dev/null 2>&1; then
+  exec 9>"$lock_file"
+  if ! lockf -s -t 0 9; then
+    echo "Another keeper process holds $lock_file" >&2
+    exit 1
+  fi
+else
+  echo "Required locking command missing: install flock or lockf" >&2
   exit 1
 fi
-trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT
 
 log_event() {
   local payload="$1"

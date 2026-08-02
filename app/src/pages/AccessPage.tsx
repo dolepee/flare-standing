@@ -19,18 +19,23 @@ export function AccessPage() {
   const { mandateId } = useParams()
   const { account, connected, connect } = useWallet()
   const { state, loading, initialized, error, refresh } = useProtocol()
-  const [nowSeconds, setNowSeconds] = useState(() => BigInt(Math.floor(Date.now() / 1_000)))
+  const [nowSeconds, setNowSeconds] = useState(0n)
   const mandate = state.mandates.find((candidate) => candidate.id.toString() === mandateId)
   const plan = mandate ? state.plans.find((candidate) => candidate.id === mandate.planId) : undefined
   const profile = getPlanProfile(plan)
 
   useEffect(() => {
-    const timer = window.setInterval(
-      () => setNowSeconds(BigInt(Math.floor(Date.now() / 1_000))),
-      1_000,
-    )
+    if (state.chainTimestamp === 0n) return
+    const chainAnchor = state.chainTimestamp
+    const monotonicAnchor = performance.now()
+    const updateClock = () => {
+      const elapsedSeconds = BigInt(Math.floor((performance.now() - monotonicAnchor) / 1_000))
+      setNowSeconds(chainAnchor + elapsedSeconds)
+    }
+    updateClock()
+    const timer = window.setInterval(updateClock, 1_000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [state.chainTimestamp])
 
   useEffect(() => {
     let stopped = false
@@ -94,7 +99,8 @@ export function AccessPage() {
     )
   }
 
-  const entitlement = entitlementState(mandate, plan.periodSeconds, nowSeconds)
+  const chainNow = nowSeconds > state.chainTimestamp ? nowSeconds : state.chainTimestamp
+  const entitlement = entitlementState(mandate, plan.periodSeconds, chainNow)
   const copy = stateCopy[entitlement]
   const Icon = copy.icon
   const ownsMandate = isSameAddress(account, mandate.subscriber)

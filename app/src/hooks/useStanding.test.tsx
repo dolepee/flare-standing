@@ -3,10 +3,10 @@ import type { Address } from 'viem'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useStanding } from './useStanding'
 
-const mocks = vi.hoisted(() => ({ readContract: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getBlock: vi.fn(), readContract: vi.fn() }))
 
 vi.mock('../lib/chain', () => ({
-  publicClient: { readContract: mocks.readContract },
+  publicClient: { getBlock: mocks.getBlock, readContract: mocks.readContract },
 }))
 
 const accountA = '0x1111111111111111111111111111111111111111' as Address
@@ -22,7 +22,11 @@ function deferred<T>() {
 }
 
 describe('useStanding', () => {
-  beforeEach(() => mocks.readContract.mockReset())
+  beforeEach(() => {
+    mocks.getBlock.mockReset()
+    mocks.getBlock.mockResolvedValue({ timestamp: 200n })
+    mocks.readContract.mockReset()
+  })
 
   it('keeps a failed read fail-closed until a retry commits successfully', async () => {
     const retryPlanCount = deferred<bigint>()
@@ -58,6 +62,7 @@ describe('useStanding', () => {
     })
     expect(result.current.error).toBeUndefined()
     expect(result.current.initialized).toBe(true)
+    expect(result.current.state.chainTimestamp).toBe(200n)
   })
 
   it('does not commit account balances from a stale refresh', async () => {

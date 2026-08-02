@@ -11,6 +11,7 @@ import { publicClient } from '../lib/chain'
 import { errorMessage } from '../lib/format'
 
 type ProtocolState = {
+  chainTimestamp: bigint
   planCount: bigint
   mandateCount: bigint
   contractBalance: bigint
@@ -26,6 +27,7 @@ type ProtocolState = {
 }
 
 const emptyState: ProtocolState = {
+  chainTimestamp: 0n,
   planCount: 0n,
   mandateCount: 0n,
   contractBalance: 0n,
@@ -57,8 +59,9 @@ export function useStanding(account?: Address) {
 
     setLoading(true)
     try {
-      const [planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
+      const [latestBlock, planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
         await Promise.all([
+          publicClient.getBlock({ blockTag: 'latest' }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'planCount' }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'mandateCount' }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'contractBalance' }),
@@ -136,6 +139,7 @@ export function useStanding(account?: Address) {
       if (!isCurrentRequest()) return
       setError(undefined)
       setState({
+        chainTimestamp: latestBlock.timestamp,
         planCount,
         mandateCount,
         contractBalance,

@@ -32,4 +32,13 @@ run_case dry-execute 0 2000000 executed charge_would_execute
 run_case live-block 1 500000 blocked charge_blocked
 run_case live-execute 1 2000000 executed charge_executed
 
-printf 'standing keeper outcome tests passed\n'
+stale_log="$temp_dir/stale-lock.jsonl"
+printf '2147483647\n' >"${stale_log}.lock"
+PATH="$temp_dir:$PATH" \
+  KEEPER_LOG_PATH="$stale_log" \
+  FAKE_REMAINING=2000000 \
+  FAKE_RECEIPT_EVENT=executed \
+  "$root_dir/script/standing-keeper.sh" --once >/dev/null
+jq -e 'select(.event == "scan_complete")' "$stale_log" >/dev/null
+
+printf 'standing keeper outcome and lock tests passed\n'
