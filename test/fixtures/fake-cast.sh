@@ -8,6 +8,12 @@ case "${1:-}" in
     printf '114\n'
     ;;
   block)
+    if [[ -n "${FAKE_BLOCK_STARTED:-}" ]]; then
+      : >"$FAKE_BLOCK_STARTED"
+    fi
+    if [[ "${FAKE_BLOCK_DELAY:-0}" != "0" ]]; then
+      sleep "$FAKE_BLOCK_DELAY"
+    fi
     printf '200\n'
     ;;
   wallet)
