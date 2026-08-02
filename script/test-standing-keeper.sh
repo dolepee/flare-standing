@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+temp_dir="$(mktemp -d)"
+trap 'rm -rf "$temp_dir"' EXIT
+
+ln -s "$root_dir/test/fixtures/fake-cast.sh" "$temp_dir/cast"
+
+run_case() {
+  local name="$1"
+  local run_live="$2"
+  local remaining="$3"
+  local receipt_event="$4"
+  local expected_event="$5"
+  local log_path="$temp_dir/$name.jsonl"
+
+  PATH="$temp_dir:$PATH" \
+    RUN_LIVE="$run_live" \
+    KEEPER_PRIVATE_KEY="0xkeeper-test-key" \
+    KEEPER_LOG_PATH="$log_path" \
+    FAKE_REMAINING="$remaining" \
+    FAKE_RECEIPT_EVENT="$receipt_event" \
+    "$root_dir/script/standing-keeper.sh" --once >/dev/null
+
+  jq -e --arg event "$expected_event" \
+    'select(.event == $event and .mandateId == 1)' "$log_path" >/dev/null
+}
+
+run_case dry-block 0 500000 blocked charge_would_block
+run_case dry-execute 0 2000000 executed charge_would_execute
+run_case live-block 1 500000 blocked charge_blocked
+run_case live-execute 1 2000000 executed charge_executed
+
+printf 'standing keeper outcome tests passed\n'

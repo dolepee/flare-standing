@@ -1,4 +1,5 @@
 import { ArrowLeft, CheckCircle2, Clock3, LockKeyhole, ReceiptText, ShieldX } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Status } from '../components/Status'
 import { useProtocol } from '../context/ProtocolContext'
@@ -18,9 +19,32 @@ export function AccessPage() {
   const { mandateId } = useParams()
   const { account, connected, connect } = useWallet()
   const { state, loading, initialized, error, refresh } = useProtocol()
+  const [nowSeconds, setNowSeconds] = useState(() => BigInt(Math.floor(Date.now() / 1_000)))
   const mandate = state.mandates.find((candidate) => candidate.id.toString() === mandateId)
   const plan = mandate ? state.plans.find((candidate) => candidate.id === mandate.planId) : undefined
   const profile = getPlanProfile(plan)
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setNowSeconds(BigInt(Math.floor(Date.now() / 1_000))),
+      1_000,
+    )
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const sync = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    const timer = window.setInterval(sync, 10_000)
+    window.addEventListener('focus', sync)
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', sync)
+      document.removeEventListener('visibilitychange', sync)
+    }
+  }, [refresh])
 
   if (!initialized && loading) {
     return <div className="page route-loading" aria-live="polite">Verifying mandate on Coston2…</div>
@@ -47,7 +71,7 @@ export function AccessPage() {
     )
   }
 
-  const entitlement = entitlementState(mandate)
+  const entitlement = entitlementState(mandate, plan.periodSeconds, nowSeconds)
   const copy = stateCopy[entitlement]
   const Icon = copy.icon
   const ownsMandate = isSameAddress(account, mandate.subscriber)

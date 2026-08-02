@@ -15,12 +15,17 @@ const mandate: StandingMandate = {
 
 describe('entitlementState', () => {
   it('unlocks only inside a paid billing window', () => {
-    expect(entitlementState(mandate, 150n)).toBe('active')
-    expect(entitlementState(mandate, 200n)).toBe('payment_due')
+    expect(entitlementState(mandate, 60, 150n)).toBe('active')
+    expect(entitlementState(mandate, 60, 160n)).toBe('payment_due')
   })
 
   it('keeps uncharged and canceled mandates locked', () => {
-    expect(entitlementState({ ...mandate, lastChargeAt: 0n }, 150n)).toBe('awaiting_first_charge')
-    expect(entitlementState({ ...mandate, canceled: true }, 150n)).toBe('canceled')
+    expect(entitlementState({ ...mandate, lastChargeAt: 0n }, 60, 150n)).toBe('awaiting_first_charge')
+    expect(entitlementState({ ...mandate, canceled: true }, 60, 150n)).toBe('canceled')
+  })
+
+  it('does not extend access when a blocked charge advances the schedule', () => {
+    const afterBlockedCharge = { ...mandate, nextChargeAt: 260n }
+    expect(entitlementState(afterBlockedCharge, 60, 170n)).toBe('payment_due')
   })
 })

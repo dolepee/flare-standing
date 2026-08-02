@@ -71,7 +71,9 @@ log_event() {
 }
 
 scan_once() {
-  local now mandate_count paused mandate_id mandate_json plan_id next_charge canceled plan_json plan_active
+  local now mandate_count paused mandate_id mandate_json plan_id remaining next_charge canceled
+  local plan_json plan_active price_usd_micro price_fxrp expected_charge expected_event adapter_json price_adapter
+  local tx_output tx_hash event event_topic executed_topic blocked_topic
   now="$(cast block latest --rpc-url "$COSTON2_RPC" --field timestamp)"
   mandate_count="$(cast call "$STANDING_ADDRESS" 'mandateCount()(uint256)' --rpc-url "$COSTON2_RPC")"
   paused="$(cast call "$STANDING_ADDRESS" 'paused()(bool)' --rpc-url "$COSTON2_RPC")"
@@ -84,6 +86,7 @@ scan_once() {
   for ((mandate_id = 1; mandate_id <= mandate_count; mandate_id++)); do
     mandate_json="$(cast call "$STANDING_ADDRESS" 'mandate(uint256)(uint256,address,uint256,uint256,uint256,uint256,bool)' "$mandate_id" --rpc-url "$COSTON2_RPC" --json)"
     plan_id="$(jq -r '.[0]' <<<"$mandate_json")"
+    remaining="$(jq -r '.[3]' <<<"$mandate_json")"
     next_charge="$(jq -r '.[4]' <<<"$mandate_json")"
     canceled="$(jq -r '.[6]' <<<"$mandate_json")"
 
@@ -92,6 +95,8 @@ scan_once() {
     fi
 
     plan_json="$(cast call "$STANDING_ADDRESS" 'plan(uint256)(address,uint256,uint256,uint32,bool)' "$plan_id" --rpc-url "$COSTON2_RPC" --json)"
+    price_usd_micro="$(jq -r '.[1]' <<<"$plan_json")"
+    price_fxrp="$(jq -r '.[2]' <<<"$plan_json")"
     plan_active="$(jq -r '.[4]' <<<"$plan_json")"
     if [[ "$plan_active" != "true" ]]; then
       log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" '{at:($at|tonumber),event:"charge_withheld",mandateId:$mandateId,reason:"plan_inactive"}')"
@@ -103,14 +108,37 @@ scan_once() {
       continue
     fi
 
+    if [[ "$price_usd_micro" == "0" ]]; then
+      expected_charge="$price_fxrp"
+    else
+      price_adapter="$(cast call "$STANDING_ADDRESS" 'priceAdapter()(address)' --rpc-url "$COSTON2_RPC")"
+      adapter_json="$(cast call "$price_adapter" 'getFxrpForUsdMicro(uint256)(uint256,uint256)' "$price_usd_micro" --rpc-url "$COSTON2_RPC" --json)"
+      expected_charge="$(jq -r '.[0]' <<<"$adapter_json")"
+    fi
+    if [[ "$expected_charge" == "0" || "$expected_charge" -gt "$remaining" ]]; then
+      expected_event="charge_would_block"
+    else
+      expected_event="charge_would_execute"
+    fi
+
     if [[ "$RUN_LIVE" != "1" ]]; then
-      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" '{at:($at|tonumber),event:"charge_ready",mandateId:$mandateId,mode:"dry_run"}')"
+      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" --arg event "$expected_event" --arg expected "$expected_charge" --arg remaining "$remaining" '{at:($at|tonumber),event:$event,mandateId:$mandateId,expectedAtomic:($expected|tonumber),remainingAtomic:($remaining|tonumber),mode:"dry_run"}')"
       continue
     fi
 
     if tx_output="$(cast send "$STANDING_ADDRESS" 'charge(uint256)' "$mandate_id" --rpc-url "$COSTON2_RPC" --private-key "$KEEPER_PRIVATE_KEY" --gas-limit "$KEEPER_GAS_LIMIT" --json 2>&1)"; then
       tx_hash="$(jq -r '.transactionHash' <<<"$tx_output")"
-      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" --arg txHash "$tx_hash" '{at:($at|tonumber),event:"charge_confirmed",mandateId:$mandateId,txHash:$txHash}')"
+      executed_topic="$(cast keccak 'ChargeExecuted(uint256,address,uint256,uint256,uint256)')"
+      blocked_topic="$(cast keccak 'ChargeBlocked(uint256,uint256,uint256)')"
+      event_topic="$(jq -r --arg address "$STANDING_ADDRESS" '.logs[] | select((.address | ascii_downcase) == ($address | ascii_downcase)) | .topics[0]' <<<"$tx_output" | head -n 1)"
+      if [[ "$event_topic" == "$executed_topic" ]]; then
+        event="charge_executed"
+      elif [[ "$event_topic" == "$blocked_topic" ]]; then
+        event="charge_blocked"
+      else
+        event="charge_outcome_unknown"
+      fi
+      log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" --arg txHash "$tx_hash" --arg event "$event" '{at:($at|tonumber),event:$event,mandateId:$mandateId,txHash:$txHash}')"
     else
       log_event "$(jq -cn --arg at "$now" --argjson mandateId "$mandate_id" '{at:($at|tonumber),event:"charge_failed",mandateId:$mandateId,retry:false}')"
     fi
