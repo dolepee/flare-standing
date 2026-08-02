@@ -38,6 +38,19 @@ if [[ "$mode" != "--once" && "$mode" != "--loop" ]]; then
   exit 2
 fi
 
+mkdir -p "$(dirname "$KEEPER_LOG_PATH")"
+lock_file="${KEEPER_LOG_PATH}.lock"
+if [[ "${STANDING_KEEPER_LOCK_HELD:-0}" != "1" ]]; then
+  if command -v flock >/dev/null 2>&1; then
+    exec flock -n -o -E 73 "$lock_file" env STANDING_KEEPER_LOCK_HELD=1 "$0" "$mode"
+  elif command -v lockf >/dev/null 2>&1; then
+    exec lockf -t 0 -k "$lock_file" env STANDING_KEEPER_LOCK_HELD=1 "$0" "$mode"
+  else
+    echo "Required locking command missing: install flock or lockf" >&2
+    exit 1
+  fi
+fi
+
 for command in cast jq; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required command missing: $command" >&2
@@ -55,26 +68,6 @@ keeper_address="0x0000000000000000000000000000000000000000"
 if [[ "$RUN_LIVE" == "1" ]]; then
   : "${KEEPER_PRIVATE_KEY:?Set KEEPER_PRIVATE_KEY only for an explicit live keeper run}"
   keeper_address="$(cast wallet address --private-key "$KEEPER_PRIVATE_KEY")"
-fi
-
-mkdir -p "$(dirname "$KEEPER_LOG_PATH")"
-lock_file="${KEEPER_LOG_PATH}.lock"
-if command -v flock >/dev/null 2>&1; then
-  exec 9>"$lock_file"
-  if ! flock -n 9; then
-    echo "Another keeper process holds $lock_file" >&2
-    exit 1
-  fi
-elif command -v lockf >/dev/null 2>&1; then
-  exec 9>"$lock_file"
-  # macOS lockf supports locking an already-open descriptor until it closes.
-  if ! lockf -s -t 0 9; then
-    echo "Another keeper process holds $lock_file" >&2
-    exit 1
-  fi
-else
-  echo "Required locking command missing: install flock or lockf" >&2
-  exit 1
 fi
 
 log_event() {
