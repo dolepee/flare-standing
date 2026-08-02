@@ -63,7 +63,7 @@ export function CheckoutPage() {
     return <div className="page route-loading" aria-live="polite">Loading plan from Coston2…</div>
   }
 
-  if (!initialized && error) {
+  if (error) {
     return (
       <div className="page route-failure" role="alert">
         <ShieldCheck aria-hidden="true" />
