@@ -12,10 +12,10 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - [x] Historical Coston2 spike deployment captured (`0xa1ccfe102946be49b7f2224b16402465d46a7c94`)
 - [x] Coston2 proof set captured: open, charge, top-up, cancel, insufficient-balance block, and canceled-charge rejection
 - [x] Hardened Coston2 candidate lifecycle validation completed (`0x8a29c741280554028d76666dc75558d98caab855`)
-- [ ] Recovered at least one real user path (subscriber + merchant) for each loop
+- [ ] Completed one external merchant-and-subscriber lifecycle
 - [x] Keeper path executed permissionlessly for both `ChargeExecuted` and `ChargeBlocked`
 - [x] One XRPL testnet direct-mint path completed and timed
-- [ ] Smart Accounts/direct-mint availability confirmed with the Flare team
+- [x] Smart Accounts/direct-mint path executed on Coston2
 - [ ] External users booked (creators/merchants/community) for post-demo outreach
 - [ ] Demo script aligned to final product framing (prepaid mandate + onchain replay points)
 
@@ -25,8 +25,10 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - Local gates are complete:
   - `forge fmt` ✅
   - `forge build` ✅
-  - `forge test` ✅ (13/13 passing)
+  - `forge test` ✅ (26/26 passing, including 2 stateful invariants)
   - `forge coverage --report lcov` ✅
+  - `cd app && npm test` ✅ (11/11 passing)
+  - `cd app && npm run test:browser` ✅ (26/26 desktop/mobile)
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
   - Coston2 FTestXRP verified at:
@@ -163,11 +165,12 @@ gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`)
 - The hardened candidate now proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
 - The Coston2 contract, live FTSO, and XRPL-to-Coston2 direct-mint portions of
   the 48-hour gate are complete.
-- Full GREEN status still requires two creator conversations and confirmation
-  of current Smart Accounts/direct-mint availability with the Flare team. This
-  controlled signer run is not external-user validation.
+- Full GREEN status still requires one external merchant-and-subscriber
+  lifecycle. The controlled signer run proves technical availability, not
+  external-user validation.
 
 ### Immediate next action
 
-- Record the Flare team's current Smart Accounts/direct-mint availability answer.
-- Book two creator or merchant conversations, then recruit the first external Coston2 subscriber.
+- Complete five creator or merchant conversations.
+- Recruit separate external merchant and subscriber wallets for one Coston2
+  plan, charge, cancel, and refund lifecycle.
