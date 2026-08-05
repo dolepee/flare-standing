@@ -16,7 +16,7 @@ import {
 } from 'viem'
 import { coston2 } from '../config'
 import { publicClient } from '../lib/chain'
-import { errorMessage } from '../lib/format'
+import { errorMessage, networkSwitchErrorMessage } from '../lib/format'
 import { COSTON2_WRITE_GAS_LIMIT, withCoston2GasLimit } from '../lib/gas'
 
 type TransactionState = {
@@ -131,7 +131,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       setChainId(activeChain)
       if (activeChain !== coston2.id) throw new Error('Wallet did not switch to Coston2')
     } catch (error) {
-      setTransaction({ label: 'Switch network', status: 'error', message: errorMessage(error) })
+      setTransaction({ label: 'Switch network', status: 'error', message: networkSwitchErrorMessage(error) })
       throw error
     }
   }, [])

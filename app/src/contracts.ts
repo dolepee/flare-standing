@@ -21,9 +21,17 @@ export const standingAbi = parseAbi([
   'function withdrawMandate(uint256 mandateId)',
   'function withdrawMerchant(uint256 amount)',
   'event PlanCreated(uint256 indexed planId, address indexed merchant, uint256 priceUsdMicro, uint256 priceFxrp, uint32 periodSeconds, bool active)',
+  'event PlanUpdated(uint256 indexed planId, bool active)',
   'event MandateOpened(uint256 indexed mandateId, uint256 indexed planId, address indexed subscriber, uint256 deposited, uint256 firstChargeAt)',
+  'event MandateTopUp(uint256 indexed mandateId, address indexed subscriber, uint256 amount)',
+  'event MandateCanceled(uint256 indexed mandateId, address indexed subscriber)',
   'event ChargeExecuted(uint256 indexed mandateId, address indexed merchant, uint256 amount, uint256 fee, uint256 nextChargeAt)',
   'event ChargeBlocked(uint256 indexed mandateId, uint256 remaining, uint256 expected)',
+  'event MerchantWithdraw(address indexed merchant, uint256 amount)',
+  'event ProtocolWithdraw(address indexed treasury, uint256 amount)',
+  'event MandateWithdrawn(uint256 indexed mandateId, address indexed subscriber, uint256 amount)',
+  'event PausedSet(bool paused)',
+  'event OwnershipTransferred(address indexed previousOwner, address indexed nextOwner)',
 ])
 
 export const erc20Abi = parseAbi([
@@ -53,4 +61,3 @@ export type StandingMandate = {
   lastChargeAt: bigint
   canceled: boolean
 }
-

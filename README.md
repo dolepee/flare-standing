@@ -36,10 +36,10 @@ routes:
 - `/merchant` creates plans and withdraws completed charges.
 - `/evidence` links the deployment, lifecycle, FTSO, and direct-mint receipts.
 
-The two current catalog entries are controlled Coston2 pilot fixtures, not
-external merchant adoption. Curated names are accepted only when the cataloged
-merchant address matches the plan's onchain merchant; every other plan falls
-back to neutral onchain labeling.
+Curated catalog profiles remain controlled Coston2 fixtures. Curated names are
+accepted only when the cataloged merchant address matches the plan's onchain
+merchant; every other plan, including the external pilot plan, falls back to
+neutral onchain labeling.
 
 ## Protocol flow
 
@@ -114,7 +114,33 @@ The controlled validation proves:
 
 Every transaction and the exact claim boundary is recorded in
 [`docs/VALIDATION_LOG.md`](docs/VALIDATION_LOG.md). This is builder-controlled
-testnet evidence. External merchant and subscriber validation is still open.
+testnet evidence.
+
+## Controlled external Coston2 pilot
+
+One external merchant, Virtual, and a separate anonymous subscriber completed
+a controlled Coston2 lifecycle using their own wallets. Virtual created plan 4,
+the subscriber prepaid `1 FTestXRP`, the permissionless keeper path executed
+one due FTSO-priced charge, both parties withdrew their respective balances,
+and a post-cancel charge reverted with `NotActive()`.
+
+- [Plan created](https://coston2-explorer.flare.network/tx/0xdd9362d5794493e94f7ec26c1ff4b40ba4e545bbc707465a31bb8a3c60382924)
+- [Mandate opened](https://coston2-explorer.flare.network/tx/0x1a350e64894b74bd0569249cefae30bffbae26b6b97bbdb111eb92c86e7aa891)
+- [Scheduled charge](https://coston2-explorer.flare.network/tx/0x0b645b0c6bc4d8e510b84303cb879f2d945c3480358405bba3c9df8f7297aef7): `0.092905 FTestXRP`
+- [Subscriber cancellation](https://coston2-explorer.flare.network/tx/0x09bf4c1c0291edb076b003c6a023f1f07671e627bad7a6dbd048efc5ed40732b)
+- [Exact unused-capacity refund](https://coston2-explorer.flare.network/tx/0x1766be15d3e344a63cb238de339a7b2ef259932c288aac4b0cbefabfc892052f): `0.907095 FTestXRP`
+- [Virtual merchant withdrawal](https://coston2-explorer.flare.network/tx/0xb1f66ae4984b278c3d01dc58c389339fb80c2e3d22d6caf32acd346b34fe5e0c): `0.091976 FTestXRP`
+
+> “Standing made the recurring Coston2 payment lifecycle easy to verify from
+> plan creation through merchant withdrawal.” — Virtual
+
+The transaction links prove the addresses and lifecycle. Participant
+independence, Virtual attribution, and the quote are participant attestations;
+chain state does not establish controller identity. This is a controlled
+external testnet pilot, not production adoption, recurring revenue, a mainnet
+customer, or a partnership. The subscriber used disclosed direct contract
+calls rather than the browser wallet-connect transaction flow, so it is not an
+end-to-end browser UX claim.
 
 ## Architecture
 
