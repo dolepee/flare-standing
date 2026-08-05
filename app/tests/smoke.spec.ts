@@ -48,8 +48,17 @@ test.describe('mobile navigation', () => {
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible()
     await page.getByRole('link', { name: 'Evidence', exact: true }).click()
     await expect(page).toHaveURL(/\/evidence$/)
-    await expect(page.getByRole('heading', { name: 'The rails are testnet-live.' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'A complete Coston2 billing lifecycle, onchain.' })).toBeVisible()
   })
+})
+
+test('evidence publishes the bounded external pilot and its closeout proofs', async ({ page }) => {
+  await page.goto('/evidence')
+  await expect(page.getByRole('heading', { name: 'Separate merchant and subscriber wallets completed the loop.' })).toBeVisible()
+  await expect(page.getByText('Standing made the recurring Coston2 payment lifecycle easy to verify from plan creation through merchant withdrawal.')).toBeVisible()
+  await expect(page.getByText(/not production adoption, recurring revenue, a mainnet customer, or a partnership/i)).toBeVisible()
+  await expect(page.getByRole('link', { name: /Scheduled FTSO charge/ })).toHaveAttribute('href', /0x0b645b0c6bc4d8e510b84303cb879f2d945c3480358405bba3c9df8f7297aef7$/)
+  await expect(page.getByRole('link', { name: /Virtual claims accrual/ })).toHaveAttribute('href', /0xb1f66ae4984b278c3d01dc58c389339fb80c2e3d22d6caf32acd346b34fe5e0c$/)
 })
 
 test('missing wallet is handled inside the product surface', async ({ page }) => {
@@ -115,4 +124,26 @@ test('adding Coston2 is followed by an explicit verified switch', async ({ page 
   expect(calls.filter((method) => method === 'wallet_switchEthereumChain')).toHaveLength(2)
   expect(calls).toContain('wallet_addEthereumChain')
   expect(calls.at(-1)).toBe('eth_chainId')
+})
+
+test('network-switch failures preserve wallet detail and explain recovery', async ({ page }) => {
+  await page.addInitScript(() => {
+    const account = '0x1111111111111111111111111111111111111111'
+    window.ethereum = {
+      request: async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [account]
+        if (method === 'eth_chainId') return '0x1'
+        if (method === 'wallet_switchEthereumChain') {
+          throw { code: -32603, message: 'The wallet could not switch networks' }
+        }
+        throw new Error(`Unexpected wallet method: ${method}`)
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Switch to Coston2' }).click()
+  await expect(page.getByText('Transaction stopped')).toBeVisible()
+  await expect(page.getByText(/The wallet could not switch networks.*add or select Coston2 \(chain 114\)/)).toBeVisible()
 })

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { formatFxrp, formatPeriod, formatUsdMicro, isSameAddress, parseFxrp, shortAddress } from './format'
+import {
+  errorMessage,
+  formatFxrp,
+  formatPeriod,
+  formatUsdMicro,
+  isSameAddress,
+  networkSwitchErrorMessage,
+  parseFxrp,
+  shortAddress,
+} from './format'
 
 describe('format helpers', () => {
   it('round-trips FXRP amounts at six decimals', () => {
@@ -16,5 +25,17 @@ describe('format helpers', () => {
     expect(isSameAddress('0xAbC', '0xaBc')).toBe(true)
     expect(shortAddress('0x1234567890abcdef')).toBe('0x1234...cdef')
   })
-})
 
+  it('preserves messages from plain wallet-provider errors', () => {
+    expect(errorMessage({ code: -32603, message: 'Wallet RPC is unavailable' })).toBe('Wallet RPC is unavailable')
+  })
+
+  it('turns network-switch failures into actionable recovery guidance', () => {
+    expect(networkSwitchErrorMessage({ code: 4001, message: 'User rejected' })).toBe(
+      'Coston2 network request was rejected in the wallet. Approve the switch, then retry.',
+    )
+    expect(networkSwitchErrorMessage({ code: -32603, message: 'Wallet RPC is unavailable' })).toContain(
+      'add or select Coston2 (chain 114)',
+    )
+  })
+})

@@ -1,6 +1,6 @@
 # STANDING — 48-Hour Validation Log
 
-Last updated: 2026-08-02
+Last updated: 2026-08-05
 
 Project: `Standing` (Flare recurring payments / prepaid mandates)
 
@@ -12,11 +12,11 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - [x] Historical Coston2 spike deployment captured (`0xa1ccfe102946be49b7f2224b16402465d46a7c94`)
 - [x] Coston2 proof set captured: open, charge, top-up, cancel, insufficient-balance block, and canceled-charge rejection
 - [x] Hardened Coston2 candidate lifecycle validation completed (`0x8a29c741280554028d76666dc75558d98caab855`)
-- [ ] Completed one external merchant-and-subscriber lifecycle
+- [x] Completed one external merchant-and-subscriber lifecycle
 - [x] Keeper path executed permissionlessly for both `ChargeExecuted` and `ChargeBlocked`
 - [x] One XRPL testnet direct-mint path completed and timed
 - [x] Smart Accounts/direct-mint path executed on Coston2
-- [ ] External users booked (creators/merchants/community) for post-demo outreach
+- [x] External merchant and subscriber booked for the controlled Coston2 pilot
 - [ ] Demo script aligned to final product framing (prepaid mandate + onchain replay points)
 
 ## Current notes
@@ -27,8 +27,8 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
   - `forge build` ✅
   - `forge test` ✅ (26/26 passing, including 2 stateful invariants)
   - `forge coverage --report lcov` ✅
-  - `cd app && npm test` ✅ (11/11 passing)
-  - `cd app && npm run test:browser` ✅ (26/26 desktop/mobile)
+  - `cd app && npm test` ✅ (15/15 passing)
+  - `cd app && npm run test:browser` ✅ (30/30 desktop/mobile)
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
   - Coston2 FTestXRP verified at:
@@ -118,6 +118,44 @@ to `868,677` raw FTestXRP at execution time.
 - Protocol withdrawal: `0x15677d80c39d15086213a952ee51d7015183f6205439a62b3a77dc6401cb305d`
 - Residual allowance cleared: `0x58fcbc435a917995a982046408149201e3d84c76ae6552b9ce31c254ef9463a3`
 
+### Controlled external Coston2 pilot
+
+An external merchant operating as Virtual and a separate anonymous subscriber
+completed one controlled lifecycle with their own wallets:
+
+- Merchant: Virtual, `0xE9bcb0f59dC73Aa39F5486131c3F6614d36515e9`
+- Subscriber: `0x154C9560B619fea7acb81F65c7e87E156FE2c975`
+- Plan 4 created: `0xdd9362d5794493e94f7ec26c1ff4b40ba4e545bbc707465a31bb8a3c60382924`
+- `1 FTestXRP` approved: `0x91879f489e2a7b9d281ce7f088e7a82b93f63bd4ef5b4171394605c3fc3de032`
+- Mandate 4 opened: `0x1a350e64894b74bd0569249cefae30bffbae26b6b97bbdb111eb92c86e7aa891`
+- Scheduled FTSO-priced charge: `0x0b645b0c6bc4d8e510b84303cb879f2d945c3480358405bba3c9df8f7297aef7`
+  - total charge: `92,905` atomic / `0.092905 FTestXRP`
+  - merchant credit: `91,976` atomic / `0.091976 FTestXRP`
+  - protocol fee: `929` atomic / `0.000929 FTestXRP`
+- Mandate canceled: `0x09bf4c1c0291edb076b003c6a023f1f07671e627bad7a6dbd048efc5ed40732b`
+- Exact unused capacity returned: `0x1766be15d3e344a63cb238de339a7b2ef259932c288aac4b0cbefabfc892052f`
+  - refund: `907,095` atomic / `0.907095 FTestXRP`
+  - final mandate: deposited `0`, remaining `0`, canceled `true`
+- Virtual withdrew the full merchant accrual: `0xb1f66ae4984b278c3d01dc58c389339fb80c2e3d22d6caf32acd346b34fe5e0c`
+  - amount: `91,976` atomic / `0.091976 FTestXRP`
+  - final merchant claimable balance: `0`
+- A read-only post-cancel charge reverted with `NotActive()` (`0x80cb55e2`).
+
+The subscriber used disclosed direct calls to `approve`, `openMandate`,
+`cancel`, and `withdrawMandate`, not the browser wallet-connect transaction
+flow. The chain evidence proves external protocol use, but not an end-to-end UI
+transaction test. Virtual reported that wallet and Coston2 setup caused the most
+friction; this release preserves wallet-provider errors and adds explicit chain
+114 recovery guidance.
+
+Approved Virtual quote:
+
+> “Standing made the recurring Coston2 payment lifecycle easy to verify from
+> plan creation through merchant withdrawal.”
+
+This is a controlled external Coston2 pilot, not production adoption, recurring
+revenue, a mainnet customer, or a partnership.
+
 ### XRPL Testnet to Coston2 direct-mint proof
 
 The official Flare Viem starter's `direct-mint-tag.ts` flow was run unchanged
@@ -165,12 +203,15 @@ gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`)
 - The hardened candidate now proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
 - The Coston2 contract, live FTSO, and XRPL-to-Coston2 direct-mint portions of
   the 48-hour gate are complete.
-- Full GREEN status still requires one external merchant-and-subscriber
-  lifecycle. The controlled signer run proves technical availability, not
-  external-user validation.
+- The controlled external Coston2 pilot is complete: separate merchant and
+  subscriber wallets created and funded the relationship, the keeper charged
+  it, both balances were withdrawn, and a later charge was rejected.
+- Full GREEN here means the bounded testnet validation gate is complete. It does
+  not imply production adoption, mainnet usage, recurring revenue, or an
+  independent security audit.
 
-### Immediate next action
+### Pilot follow-up
 
-- Complete five creator or merchant conversations.
-- Recruit separate external merchant and subscriber wallets for one Coston2
-  plan, charge, cancel, and refund lifecycle.
+- Publish the bounded transaction set and Virtual's approved quote.
+- Keep wallet-provider errors visible and provide explicit Coston2 recovery
+  guidance when a network switch fails.
