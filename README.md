@@ -134,10 +134,13 @@ and a post-cancel charge reverted with `NotActive()`.
 > “Standing made the recurring Coston2 payment lifecycle easy to verify from
 > plan creation through merchant withdrawal.” — Virtual
 
-This is a controlled external testnet pilot, not production adoption, recurring
-revenue, a mainnet customer, or a partnership. The subscriber used disclosed
-direct contract calls rather than the browser wallet-connect transaction flow,
-so it is not an end-to-end browser UX claim.
+The transaction links prove the addresses and lifecycle. Participant
+independence, Virtual attribution, and the quote are participant attestations;
+chain state does not establish controller identity. This is a controlled
+external testnet pilot, not production adoption, recurring revenue, a mainnet
+customer, or a partnership. The subscriber used disclosed direct contract
+calls rather than the browser wallet-connect transaction flow, so it is not an
+end-to-end browser UX claim.
 
 ## Architecture
 

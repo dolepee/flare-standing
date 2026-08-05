@@ -153,8 +153,11 @@ Approved Virtual quote:
 > “Standing made the recurring Coston2 payment lifecycle easy to verify from
 > plan creation through merchant withdrawal.”
 
-This is a controlled external Coston2 pilot, not production adoption, recurring
-revenue, a mainnet customer, or a partnership.
+The transaction receipts prove the addresses and lifecycle. Participant
+independence, Virtual attribution, and the quote are participant attestations;
+chain state does not establish controller identity. This is a controlled
+external Coston2 pilot, not production adoption, recurring revenue, a mainnet
+customer, or a partnership.
 
 ### XRPL Testnet to Coston2 direct-mint proof
 

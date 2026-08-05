@@ -20,7 +20,7 @@ const pilotRows = [
 export function EvidencePage() {
   return (
     <div className="page">
-      <section className="page-heading"><div><span className="eyebrow">Public verification</span><h1>A complete Coston2 billing lifecycle, onchain.</h1><p>The deployment, FTSO conversion, direct mint, and one controlled external pilot can be independently replayed from public chain state.</p></div></section>
+      <section className="page-heading"><div><span className="eyebrow">Public verification</span><h1>A complete Coston2 billing lifecycle, onchain.</h1><p>The deployment, FTSO conversion, direct mint, and pilot transaction lifecycle can be replayed from public chain state. Participant attribution is separately attested.</p></div></section>
       <section className="proof-layout">
         <div className="proof-list">
           {proofRows.map((proof) => (
@@ -52,7 +52,7 @@ export function EvidencePage() {
             <div><dt>Fee</dt><dd>0.000929 FTestXRP</dd></div>
           </dl>
           <blockquote>“Standing made the recurring Coston2 payment lifecycle easy to verify from plan creation through merchant withdrawal.”<cite>Virtual</cite></blockquote>
-          <p className="pilot-boundary">Controlled Coston2 pilot only. This is not production adoption, recurring revenue, a mainnet customer, or a partnership. The subscriber used disclosed direct contract calls, so it is not an end-to-end browser-wallet UX claim.</p>
+          <p className="pilot-boundary">Chain state proves the addresses and lifecycle, not who controls those wallets. Virtual attribution, subscriber independence, and the quote are participant attestations. This controlled Coston2 pilot is not production adoption, recurring revenue, a mainnet customer, a partnership, or an end-to-end browser-wallet UX claim.</p>
         </div>
         <div className="pilot-proof-list" aria-label="External pilot transactions">
           {pilotRows.map((proof) => (
