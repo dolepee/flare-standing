@@ -143,10 +143,11 @@ completed one controlled lifecycle with their own wallets:
 
 The subscriber used disclosed direct calls to `approve`, `openMandate`,
 `cancel`, and `withdrawMandate`, not the browser wallet-connect transaction
-flow. The chain evidence proves external protocol use, but not an end-to-end UI
-transaction test. Virtual reported that wallet and Coston2 setup caused the most
-friction; this release preserves wallet-provider errors and adds explicit chain
-114 recovery guidance.
+flow. The transaction evidence proves protocol use by the disclosed subscriber
+address, but not the participant's independence or an end-to-end UI transaction
+test. Virtual reported that wallet and Coston2 setup caused the most friction;
+this release preserves wallet-provider errors and adds explicit chain 114
+recovery guidance.
 
 Approved Virtual quote:
 
