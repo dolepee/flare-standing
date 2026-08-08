@@ -12,6 +12,7 @@ import { Client } from "xrpl";
 import {
   assertFreshPreviewMatches,
   assertPreviewIntegrity,
+  executionClaimPath,
   readJson,
   writePrivateJson,
   writePrivateJsonExclusive,
@@ -77,7 +78,7 @@ try {
 
 const transactionId = `0x${sent.xrplTransactionHash}`.toLowerCase() as Hex;
 const claimedAt = new Date().toISOString();
-const claimPath = `${sentPath}.execution-claim`;
+const claimPath = executionClaimPath(sentPath, sent.xrplTransactionHash);
 await writePrivateJsonExclusive(claimPath, {
   version: 1,
   xrplTransactionHash: sent.xrplTransactionHash,

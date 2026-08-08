@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   assertFreshPreviewMatches,
   assertPreviewIntegrity,
+  executionClaimPath,
   writePrivateJsonExclusive,
 } from "../src/artifact.js";
 import type { AtomicSubscribePreview } from "../src/preflight.js";
@@ -100,5 +101,15 @@ describe("atomic artifact boundary", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it("scopes claims to a validated XRPL transaction hash", () => {
+    const first = "A".repeat(64);
+    const second = "B".repeat(64);
+    expect(executionClaimPath("sent.json", first)).toBe(
+      `sent.json.${first.toLowerCase()}.execution-claim`,
+    );
+    expect(executionClaimPath("sent.json", first)).not.toBe(executionClaimPath("sent.json", second));
+    expect(() => executionClaimPath("sent.json", "../not-a-hash")).toThrow("invalid XRPL transaction hash");
   });
 });

@@ -36,6 +36,13 @@ export async function writePrivateJsonExclusive(path: string, value: unknown): P
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
 }
 
+export function executionClaimPath(sentPath: string, xrplTransactionHash: string): string {
+  if (!/^[A-Fa-f0-9]{64}$/.test(xrplTransactionHash)) {
+    throw new Error("invalid XRPL transaction hash in sent artifact");
+  }
+  return `${sentPath}.${xrplTransactionHash.toLowerCase()}.execution-claim`;
+}
+
 export function assertPreviewIntegrity(preview: AtomicSubscribePreview): void {
   if (preview.network !== "Coston2" || preview.chainId !== 114) throw new Error("preview is not for Coston2");
   if (preview.readiness !== "READY") throw new Error("preview is blocked; resolve every preflight check before sending");
