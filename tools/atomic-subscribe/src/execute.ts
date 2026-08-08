@@ -22,6 +22,7 @@ import { directMintingExecuteAbi, standingAbi, standingEventsAbi, userOperationE
 import { coston2 } from "./config.js";
 import { obtainXrpPaymentProof } from "./fdc.js";
 import { buildAtomicSubscribePreview } from "./preflight.js";
+import { deliveredNativePaymentDrops, requestedNativePaymentDrops } from "./xrpl.js";
 
 const requiredConfirmation = "APPROVE STANDING ATOMIC FDC EXECUTION";
 if (process.env.CONFIRM_EXECUTE !== requiredConfirmation) {
@@ -65,7 +66,12 @@ try {
   if (payment.Account !== committed.xrplSource) throw new Error("XRPL payment source mismatch");
   if (payment.Destination !== committed.xrplDestination) throw new Error("XRPL payment destination mismatch");
   if ("DestinationTag" in payment) throw new Error("XRPL payment unexpectedly has a destination tag");
-  if (payment.Amount !== committed.payment.totalPaymentUBA) throw new Error("XRPL payment amount mismatch");
+  if (requestedNativePaymentDrops(payment) !== committed.payment.totalPaymentUBA) {
+    throw new Error("XRPL requested payment amount mismatch");
+  }
+  if (deliveredNativePaymentDrops(transaction.result.meta) !== committed.payment.totalPaymentUBA) {
+    throw new Error("XRPL delivered payment amount mismatch");
+  }
   const memo = payment.Memos?.[0]?.Memo?.MemoData;
   if (!memo || `0x${memo}`.toLowerCase() !== committed.instruction.memoData.toLowerCase()) {
     throw new Error("XRPL payment memo does not match committed user operation");
