@@ -4,6 +4,8 @@ import { COSTON2_EXPLORER, FTSO_ADAPTER_ADDRESS, STANDING_ADDRESS } from '../con
 const proofRows = [
   { label: 'Hardened Standing deployment', network: 'Coston2', value: STANDING_ADDRESS, href: `${COSTON2_EXPLORER}/address/${STANDING_ADDRESS}` },
   { label: 'FTSO USD adapter', network: 'Coston2', value: FTSO_ADAPTER_ADDRESS, href: `${COSTON2_EXPLORER}/address/${FTSO_ADAPTER_ADDRESS}` },
+  { label: 'Atomic XRP subscription payment', network: 'XRPL Testnet', value: '09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A', href: 'https://testnet.xrpl.org/transactions/09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A' },
+  { label: 'Atomic FXRP mint + mandate 5', network: 'Coston2', value: '0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064', href: `${COSTON2_EXPLORER}/tx/0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064` },
   { label: 'Live USD-priced charge', network: 'Coston2', value: '0x0791f6fd41dc4a5cf94e9a4973ecba3ed8c3b3e82b3169d1f214f2bc8fb28a43', href: `${COSTON2_EXPLORER}/tx/0x0791f6fd41dc4a5cf94e9a4973ecba3ed8c3b3e82b3169d1f214f2bc8fb28a43` },
   { label: 'Tagged direct-mint execution', network: 'Coston2', value: '0x740995f3602e9f6548ccb11d70c789c53490faee67d1455f2a6faa7e3bec4c28', href: `${COSTON2_EXPLORER}/tx/0x740995f3602e9f6548ccb11d70c789c53490faee67d1455f2a6faa7e3bec4c28` },
 ]
@@ -20,7 +22,7 @@ const pilotRows = [
 export function EvidencePage() {
   return (
     <div className="page">
-      <section className="page-heading"><div><span className="eyebrow">Public verification</span><h1>A complete Coston2 billing lifecycle, onchain.</h1><p>The deployment, FTSO conversion, direct mint, and pilot transaction lifecycle can be replayed from public chain state. Participant attribution is separately attested.</p></div></section>
+      <section className="page-heading"><div><span className="eyebrow">Public verification</span><h1>One XRP payment. One live mandate.</h1><p>The atomic subscription, FTSO conversion, and external pilot lifecycle can be replayed from public XRPL Testnet and Coston2 state. Participant attribution is separately attested.</p></div></section>
       <section className="proof-layout">
         <div className="proof-list">
           {proofRows.map((proof) => (
@@ -32,13 +34,13 @@ export function EvidencePage() {
           ))}
         </div>
         <aside className="mint-timeline">
-          <span className="eyebrow">XRPL → Flare</span><h2>Direct mint</h2>
+          <span className="eyebrow">XRPL → Flare</span><h2>Atomic subscribe</h2>
           <ol>
-            <li><span>19:06:20</span><div><strong>XRPL payment validated</strong><small>10.2 XRP · tag 182</small></div></li>
-            <li><span>+153s</span><div><strong>FXRP minted</strong><small>10 FXRP to derived smart account</small></div></li>
-            <li><span>Complete</span><div><strong>Publicly reproducible</strong><small>Official Flare starter, unchanged</small></div></li>
+            <li><span>1.2 XRP</span><div><strong>Payment validated</strong><small>42-byte 0xFE Smart Account memo</small></div></li>
+            <li><span>FDC</span><div><strong>Payment proven on Flare</strong><small>1 FXRP minted to the derived account</small></div></li>
+            <li><span>Mandate 5</span><div><strong>Subscription opened atomically</strong><small>Plan 4 · 1 FXRP prepaid capacity</small></div></li>
           </ol>
-          <p>Controlled-builder Testnet evidence. This is not a mainnet or customer-adoption claim.</p>
+          <p>Controlled-builder testnet evidence using Flare Smart Accounts, FAssets, FDC, and Standing. This is not a mainnet or customer-adoption claim.</p>
         </aside>
       </section>
       <section className="pilot-evidence" aria-labelledby="pilot-evidence-title">
