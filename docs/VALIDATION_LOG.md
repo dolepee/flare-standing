@@ -213,7 +213,7 @@ one Flare transaction.
 - Coston2 execution:
   `0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064`
   - receipt status: success
-  - direct-minted amount delivered to the Smart Account: `1,100,000` UBA
+  - net direct-minted amount delivered to the Smart Account: `1,000,000` UBA
   - Standing deposit: `1,000,000` atomic FXRP (`1 FXRP`)
   - mandate: `5`, plan: `4`
   - stored subscriber: `0x230068eE8262BE1A7DF36f55Ebb17F64Cc8F7890`
