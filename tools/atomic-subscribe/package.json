@@ -1,0 +1,23 @@
+{
+  "name": "@standing/atomic-subscribe",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "preview": "tsx src/preview.ts",
+    "send": "tsx src/send.ts",
+    "execute": "tsx src/execute.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "viem": "^2.55.4",
+    "xrpl": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "tsx": "^4.21.0",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.10"
+  }
+}

@@ -41,3 +41,25 @@ jobs:
         run: |
           bash -n script/standing-keeper.sh
           script/test-standing-keeper.sh
+
+  atomic-subscribe:
+    name: Atomic XRPL subscription
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: tools/atomic-subscribe
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/atomic-subscribe/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm audit --omit=dev

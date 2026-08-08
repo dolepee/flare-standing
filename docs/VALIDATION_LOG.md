@@ -194,6 +194,37 @@ was sent.
 This is controlled-builder testnet evidence, not an external-user mint or a
 mainnet availability claim.
 
+### Atomic XRPL payment to Standing mandate proof
+
+A separate controlled-builder Coston2 run proved the complete custom-instruction
+path: one XRPL Testnet payment carried a canonical 42-byte `0xFE` Smart Account
+memo, direct-minted FXRP, approved Standing, and opened plan 4 as mandate 5 in
+one Flare transaction.
+
+- XRPL sender: `rfm394DQHDXeLD1KYnFjKuavcGBr4911FY`
+- Core Vault destination: `rDhpmiPq4BVBDWMVdSrmkgt8thKyRzGV1p`
+- Derived Flare smart account: `0x230068eE8262BE1A7DF36f55Ebb17F64Cc8F7890`
+- XRPL payment:
+  `09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A`
+  - validated with `tesSUCCESS`
+  - amount requested and delivered: `1,200,000` drops (`1.2 XRP`)
+  - destination tag: none
+  - memo: canonical 42-byte `0xFE` hash instruction
+- Coston2 execution:
+  `0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064`
+  - receipt status: success
+  - net direct-minted amount delivered to the Smart Account: `1,000,000` UBA
+  - Standing deposit: `1,000,000` atomic FXRP (`1 FXRP`)
+  - mandate: `5`, plan: `4`
+  - stored subscriber: `0x230068eE8262BE1A7DF36f55Ebb17F64Cc8F7890`
+  - stored remaining capacity: `1,000,000` atomic FXRP
+  - scheduled charge: nonzero; prior charge: zero; canceled: false
+
+The payment amount also included the live `100,000` UBA minting fee and
+`100,000` UBA direct-mint executor fee. The Smart Account instruction executor
+fee remained zero, matching Flare's official `0xFE` starter. This is
+controlled-builder testnet evidence, not a mainnet or external-user claim.
+
 Funding for this validation was recovered from the same signer's canceled
 historical mandates. One recovery attempt
 (`0x2ef83eac03663ed4f4100e90663a93d2f5b81eafec059bc650f48ca065f4b5c1`)
@@ -207,6 +238,8 @@ gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`)
 - The hardened candidate now proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
 - The Coston2 contract, live FTSO, and XRPL-to-Coston2 direct-mint portions of
   the 48-hour gate are complete.
+- The one-payment atomic subscription gate is complete: XRPL payment, FDC
+  proof, direct mint, token approval, and stored Standing mandate all match.
 - The controlled external Coston2 pilot is complete: separate merchant and
   subscriber wallets created and funded the relationship, the keeper charged
   it, both balances were withdrawn, and a later charge was rejected.

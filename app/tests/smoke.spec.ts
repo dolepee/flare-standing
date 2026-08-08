@@ -48,12 +48,16 @@ test.describe('mobile navigation', () => {
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible()
     await page.getByRole('link', { name: 'Evidence', exact: true }).click()
     await expect(page).toHaveURL(/\/evidence$/)
-    await expect(page.getByRole('heading', { name: 'A complete Coston2 billing lifecycle, onchain.' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'One XRP payment. One live mandate.' })).toBeVisible()
   })
 })
 
 test('evidence publishes the bounded external pilot and its closeout proofs', async ({ page }) => {
   await page.goto('/evidence')
+  await expect(page.getByRole('heading', { name: 'One XRP payment. One live mandate.' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Atomic XRP subscription payment/ })).toHaveAttribute('href', /09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A$/)
+  await expect(page.getByRole('link', { name: /Atomic FXRP mint \+ mandate 5/ })).toHaveAttribute('href', /0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064$/)
+  await expect(page.getByText('Plan 4 · 1 FXRP prepaid capacity')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Separate merchant and subscriber wallets completed the loop.' })).toBeVisible()
   await expect(page.getByText('Standing made the recurring Coston2 payment lifecycle easy to verify from plan creation through merchant withdrawal.')).toBeVisible()
   await expect(page.getByText(/Virtual attribution, subscriber independence, and the quote are participant attestations/i)).toBeVisible()

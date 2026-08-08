@@ -110,11 +110,20 @@ The controlled validation proves:
 - merchant and protocol withdrawals;
 - insufficient-capacity blocking;
 - an XRPL testnet direct mint that produced 10 FXRP on Coston2 in 153 observed
-  seconds.
+  seconds;
+- one atomic 1.2 XRP testnet payment that direct-minted FXRP and opened Standing
+  mandate 5 with exactly 1 FXRP of prepaid capacity.
 
 Every transaction and the exact claim boundary is recorded in
 [`docs/VALIDATION_LOG.md`](docs/VALIDATION_LOG.md). This is builder-controlled
 testnet evidence.
+
+The atomic proof is independently replayable from its
+[XRPL payment](https://testnet.xrpl.org/transactions/09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A)
+and [Coston2 execution](https://coston2-explorer.flare.network/tx/0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064).
+The latter stores mandate 5 for plan 4 with `1,000,000` atomic FXRP deposited
+and remaining. This is controlled-builder testnet proof, not mainnet usage or
+external adoption.
 
 ## Controlled external Coston2 pilot
 
