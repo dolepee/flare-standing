@@ -12,6 +12,11 @@ export type SentAtomicSubscribe = AtomicSubscribeSentBase &
   (
     | { execution: "PENDING" }
     | {
+        execution: "IN_PROGRESS";
+        claimedAt: string;
+        executorAddress: string;
+      }
+    | {
         execution: "COMPLETE";
         executorTransactionHash: string;
         mandateId: string;
@@ -25,6 +30,10 @@ export async function readJson<T>(path: string): Promise<T> {
 
 export async function writePrivateJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+}
+
+export async function writePrivateJsonExclusive(path: string, value: unknown): Promise<void> {
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
 }
 
 export function assertPreviewIntegrity(preview: AtomicSubscribePreview): void {

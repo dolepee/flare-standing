@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { assertFreshPreviewMatches, assertPreviewIntegrity } from "../src/artifact.js";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  assertFreshPreviewMatches,
+  assertPreviewIntegrity,
+  writePrivateJsonExclusive,
+} from "../src/artifact.js";
 import type { AtomicSubscribePreview } from "../src/preflight.js";
 
 function preview(overrides: Partial<AtomicSubscribePreview> = {}): AtomicSubscribePreview {
@@ -77,5 +84,21 @@ describe("atomic artifact boundary", () => {
         preview({ xrplDestination: "rChangedDestination" }),
       ),
     ).toThrow("drifted");
+  });
+
+  it("allows exactly one process to claim an executor artifact", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "standing-atomic-"));
+    const claim = join(directory, "execution-claim.json");
+    try {
+      const results = await Promise.allSettled([
+        writePrivateJsonExclusive(claim, { owner: "first" }),
+        writePrivateJsonExclusive(claim, { owner: "second" }),
+      ]);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+      expect(JSON.parse(await readFile(claim, "utf8"))).toHaveProperty("owner");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

@@ -14,6 +14,7 @@ import {
   assertPreviewIntegrity,
   readJson,
   writePrivateJson,
+  writePrivateJsonExclusive,
   type SentAtomicSubscribe,
 } from "./artifact.js";
 import { directMintingExecuteAbi, standingAbi, standingEventsAbi, userOperationExecutedAbi } from "./abis.js";
@@ -75,6 +76,22 @@ try {
 }
 
 const transactionId = `0x${sent.xrplTransactionHash}`.toLowerCase() as Hex;
+const claimedAt = new Date().toISOString();
+const claimPath = `${sentPath}.execution-claim`;
+await writePrivateJsonExclusive(claimPath, {
+  version: 1,
+  xrplTransactionHash: sent.xrplTransactionHash,
+  claimedAt,
+  executorAddress: account.address,
+  status: "EXCLUSIVE_EXECUTION_CLAIM",
+});
+await writePrivateJson(sentPath, {
+  ...sent,
+  execution: "IN_PROGRESS",
+  claimedAt,
+  executorAddress: account.address,
+} satisfies SentAtomicSubscribe);
+
 const proof = await obtainXrpPaymentProof({
   transactionId,
   proofOwner: account.address,
