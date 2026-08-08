@@ -4,6 +4,7 @@ import {
   assertFreshPreviewMatches,
   assertPreviewIntegrity,
   readJson,
+  transactionArtifactPath,
   writePrivateJson,
   type SentAtomicSubscribe,
 } from "./artifact.js";
@@ -16,7 +17,7 @@ if (process.env.CONFIRM_SEND !== requiredConfirmation) {
 }
 
 const previewPath = resolve(process.env.PREVIEW_FILE ?? "atomic-subscribe-preview.json");
-const outputPath = resolve(process.env.SENT_FILE ?? "atomic-subscribe-sent.json");
+const outputBasePath = resolve(process.env.SENT_FILE ?? "atomic-subscribe-sent.json");
 const seed = process.env.XRPL_SEED;
 if (!seed) throw new Error("XRPL_SEED is required");
 
@@ -64,6 +65,7 @@ try {
     sentAt: new Date().toISOString(),
     execution: "PENDING",
   };
+  const outputPath = transactionArtifactPath(outputBasePath, result.result.hash);
   await writePrivateJson(outputPath, sent);
   console.log(`XRPL payment validated: ${result.result.hash}`);
   console.log(`Executor artifact written to ${outputPath}`);

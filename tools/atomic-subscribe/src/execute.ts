@@ -12,10 +12,10 @@ import { Client } from "xrpl";
 import {
   assertFreshPreviewMatches,
   assertPreviewIntegrity,
+  createExecutionClaim,
   executionClaimPath,
   readJson,
   writePrivateJson,
-  writePrivateJsonExclusive,
   type SentAtomicSubscribe,
 } from "./artifact.js";
 import { directMintingExecuteAbi, standingAbi, standingEventsAbi, userOperationExecutedAbi } from "./abis.js";
@@ -28,7 +28,9 @@ if (process.env.CONFIRM_EXECUTE !== requiredConfirmation) {
   throw new Error(`Refusing to execute. Set CONFIRM_EXECUTE exactly to: ${requiredConfirmation}`);
 }
 
-const sentPath = resolve(process.env.SENT_FILE ?? "atomic-subscribe-sent.json");
+const sentFile = process.env.SENT_FILE;
+if (!sentFile) throw new Error("SENT_FILE is required; use the transaction-specific path printed by send");
+const sentPath = resolve(sentFile);
 const outputPath = resolve(process.env.COMPLETED_FILE ?? "atomic-subscribe-completed.json");
 const privateKey = process.env.PRIVATE_KEY as Hex | undefined;
 if (!privateKey) throw new Error("PRIVATE_KEY is required for the FDC request and executor transaction");
@@ -78,8 +80,8 @@ try {
 
 const transactionId = `0x${sent.xrplTransactionHash}`.toLowerCase() as Hex;
 const claimedAt = new Date().toISOString();
-const claimPath = executionClaimPath(sentPath, sent.xrplTransactionHash);
-await writePrivateJsonExclusive(claimPath, {
+const claimPath = executionClaimPath(sent.xrplTransactionHash);
+await createExecutionClaim(claimPath, {
   version: 1,
   xrplTransactionHash: sent.xrplTransactionHash,
   claimedAt,

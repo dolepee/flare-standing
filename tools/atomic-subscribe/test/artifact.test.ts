@@ -6,6 +6,7 @@ import {
   assertFreshPreviewMatches,
   assertPreviewIntegrity,
   executionClaimPath,
+  transactionArtifactPath,
   writePrivateJsonExclusive,
 } from "../src/artifact.js";
 import type { AtomicSubscribePreview } from "../src/preflight.js";
@@ -106,10 +107,19 @@ describe("atomic artifact boundary", () => {
   it("scopes claims to a validated XRPL transaction hash", () => {
     const first = "A".repeat(64);
     const second = "B".repeat(64);
-    expect(executionClaimPath("sent.json", first)).toBe(
-      `sent.json.${first.toLowerCase()}.execution-claim`,
+    expect(executionClaimPath(first, "/claims")).toBe(`/claims/coston2-${first.toLowerCase()}.json`);
+    expect(executionClaimPath(first, "/claims")).not.toBe(executionClaimPath(second, "/claims"));
+    expect(() => executionClaimPath("../not-a-hash", "/claims")).toThrow("invalid XRPL transaction hash");
+  });
+
+  it("writes each payment to a transaction-specific artifact path", () => {
+    const first = "A".repeat(64);
+    const second = "B".repeat(64);
+    expect(transactionArtifactPath("/tmp/sent.json", first)).toBe(
+      `/tmp/sent.${first.toLowerCase()}.json`,
     );
-    expect(executionClaimPath("sent.json", first)).not.toBe(executionClaimPath("sent.json", second));
-    expect(() => executionClaimPath("sent.json", "../not-a-hash")).toThrow("invalid XRPL transaction hash");
+    expect(transactionArtifactPath("/tmp/sent.json", first)).not.toBe(
+      transactionArtifactPath("/tmp/sent.json", second),
+    );
   });
 });

@@ -1,4 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, extname, join } from "node:path";
 import type { AtomicSubscribePreview } from "./preflight.js";
 
 type AtomicSubscribeSentBase = {
@@ -36,11 +38,32 @@ export async function writePrivateJsonExclusive(path: string, value: unknown): P
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
 }
 
-export function executionClaimPath(sentPath: string, xrplTransactionHash: string): string {
+function validatedXrplTransactionHash(xrplTransactionHash: string): string {
   if (!/^[A-Fa-f0-9]{64}$/.test(xrplTransactionHash)) {
     throw new Error("invalid XRPL transaction hash in sent artifact");
   }
-  return `${sentPath}.${xrplTransactionHash.toLowerCase()}.execution-claim`;
+  return xrplTransactionHash.toLowerCase();
+}
+
+export function transactionArtifactPath(basePath: string, xrplTransactionHash: string): string {
+  const hash = validatedXrplTransactionHash(xrplTransactionHash);
+  const extension = extname(basePath);
+  const stem = extension ? basePath.slice(0, -extension.length) : basePath;
+  return `${stem}.${hash}${extension || ".json"}`;
+}
+
+export function executionClaimPath(
+  xrplTransactionHash: string,
+  claimDirectory = join(homedir(), ".config", "flare-standing", "atomic-execution-claims"),
+): string {
+  return join(claimDirectory, `coston2-${validatedXrplTransactionHash(xrplTransactionHash)}.json`);
+}
+
+export async function createExecutionClaim(path: string, value: unknown): Promise<void> {
+  const directory = dirname(path);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
+  await writePrivateJsonExclusive(path, value);
 }
 
 export function assertPreviewIntegrity(preview: AtomicSubscribePreview): void {
