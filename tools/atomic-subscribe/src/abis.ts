@@ -94,6 +94,21 @@ export const standingAbi = [
     ],
     outputs: [],
   },
+  {
+    type: "function",
+    name: "mandates",
+    stateMutability: "view",
+    inputs: [{ name: "mandateId", type: "uint256" }],
+    outputs: [
+      { name: "planId", type: "uint256" },
+      { name: "subscriber", type: "address" },
+      { name: "deposited", type: "uint256" },
+      { name: "remaining", type: "uint256" },
+      { name: "nextChargeAt", type: "uint256" },
+      { name: "lastChargeAt", type: "uint256" },
+      { name: "canceled", type: "bool" },
+    ],
+  },
 ] as const;
 
 export const erc20ReadAbi = [

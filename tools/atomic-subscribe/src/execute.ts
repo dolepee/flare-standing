@@ -9,8 +9,14 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Client } from "xrpl";
-import { assertPreviewIntegrity, readJson, writePrivateJson, type SentAtomicSubscribe } from "./artifact.js";
-import { directMintingExecuteAbi, standingEventsAbi, userOperationExecutedAbi } from "./abis.js";
+import {
+  assertFreshPreviewMatches,
+  assertPreviewIntegrity,
+  readJson,
+  writePrivateJson,
+  type SentAtomicSubscribe,
+} from "./artifact.js";
+import { directMintingExecuteAbi, standingAbi, standingEventsAbi, userOperationExecutedAbi } from "./abis.js";
 import { coston2 } from "./config.js";
 import { obtainXrpPaymentProof } from "./fdc.js";
 import { buildAtomicSubscribePreview } from "./preflight.js";
@@ -43,19 +49,7 @@ const fresh = await buildAtomicSubscribePreview({
   client,
 });
 const committed = sent.preview;
-for (const [field, current, expected] of [
-  ["xrplDestination", fresh.xrplDestination, committed.xrplDestination],
-  ["personalAccount", fresh.personalAccount, committed.personalAccount],
-  ["fxrp", fresh.fxrp, committed.fxrp],
-  ["assetManager", fresh.assetManager, committed.assetManager],
-  ["nonce", fresh.nonce, committed.nonce],
-  ["memoData", fresh.instruction.memoData, committed.instruction.memoData],
-  ["packedUserOperation", fresh.instruction.packedUserOperation, committed.instruction.packedUserOperation],
-] as const) {
-  if (current.toLowerCase() !== expected.toLowerCase()) {
-    throw new Error(`live ${field} drifted after payment; refusing execution`);
-  }
-}
+assertFreshPreviewMatches(committed, fresh);
 
 const xrpl = new Client(process.env.XRPL_TESTNET_RPC_URL ?? "wss://s.altnet.rippletest.net:51233");
 await xrpl.connect();
@@ -104,11 +98,30 @@ if (receipt.status !== "success") throw new Error(`executeDirectMintingWithData 
 const mandateEvents = parseEventLogs({ abi: standingEventsAbi, eventName: "MandateOpened", logs: receipt.logs });
 const mandate = mandateEvents.find(
   (event) =>
+    event.address.toLowerCase() === committed.standing.toLowerCase() &&
     event.args.planId === BigInt(committed.plan.id) &&
     event.args.subscriber.toLowerCase() === committed.personalAccount.toLowerCase() &&
     event.args.deposited === BigInt(committed.deposit.atomic),
 );
 if (!mandate) throw new Error("executor succeeded without the committed MandateOpened event");
+const storedMandate = await client.readContract({
+  address: getAddress(committed.standing),
+  abi: standingAbi,
+  functionName: "mandates",
+  args: [mandate.args.mandateId],
+});
+const [storedPlanId, storedSubscriber, storedDeposited, storedRemaining, , storedLastChargeAt, storedCanceled] =
+  storedMandate;
+if (
+  storedPlanId !== BigInt(committed.plan.id) ||
+  storedSubscriber.toLowerCase() !== committed.personalAccount.toLowerCase() ||
+  storedDeposited !== BigInt(committed.deposit.atomic) ||
+  storedRemaining !== BigInt(committed.deposit.atomic) ||
+  storedLastChargeAt !== 0n ||
+  storedCanceled
+) {
+  throw new Error("Standing stored mandate does not match the committed atomic subscription");
+}
 
 const userOperations = parseEventLogs({
     abi: userOperationExecutedAbi,

@@ -45,6 +45,7 @@ export type AtomicSubscribePreview = {
   instruction: {
     opcode: "0xFE";
     memoBytes: 42;
+    smartAccountExecutorFeeUBA: "0";
     memoData: `0x${string}`;
     packedUserOperation: `0x${string}`;
     userOperationHash: `0x${string}`;
@@ -131,7 +132,10 @@ export async function buildAtomicSubscribePreview(input: {
     throw new Error(`deposit ${depositAtomic} is below the fixed first charge ${priceFxrp}`);
   }
   const calls = buildStandingCalls({ fxrp, standing, planId: input.planId, depositAtomic });
-  const encoded = encodeHashInstruction({ calls, sender: personalAccount, nonce });
+  // This is the Smart Account instruction fee, not AssetManager's direct-mint
+  // executor fee. Flare's official 0xFE starter encodes zero here while adding
+  // the separate direct-mint executor fee to the XRPL payment below.
+  const encoded = encodeHashInstruction({ calls, sender: personalAccount, nonce, executorFeeUBA: 0n });
   const payment = calculateDirectMintPayment(depositAtomic, { executorFeeUBA, feeBips, minimumFeeUBA });
 
   return {
@@ -164,6 +168,7 @@ export async function buildAtomicSubscribePreview(input: {
     instruction: {
       opcode: "0xFE",
       memoBytes: 42,
+      smartAccountExecutorFeeUBA: "0",
       memoData: encoded.memoData,
       packedUserOperation: encoded.data,
       userOperationHash: encoded.userOperationHash,

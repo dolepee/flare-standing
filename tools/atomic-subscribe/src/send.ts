@@ -1,7 +1,14 @@
 import { resolve } from "node:path";
 import { Client, Wallet, xrpToDrops } from "xrpl";
-import { assertPreviewIntegrity, readJson, writePrivateJson, type SentAtomicSubscribe } from "./artifact.js";
+import {
+  assertFreshPreviewMatches,
+  assertPreviewIntegrity,
+  readJson,
+  writePrivateJson,
+  type SentAtomicSubscribe,
+} from "./artifact.js";
 import type { AtomicSubscribePreview } from "./preflight.js";
+import { buildAtomicSubscribePreview } from "./preflight.js";
 
 const requiredConfirmation = "APPROVE STANDING ATOMIC XRPL SUBSCRIPTION";
 if (process.env.CONFIRM_SEND !== requiredConfirmation) {
@@ -15,6 +22,13 @@ if (!seed) throw new Error("XRPL_SEED is required");
 
 const preview = await readJson<AtomicSubscribePreview>(previewPath);
 assertPreviewIntegrity(preview);
+const fresh = await buildAtomicSubscribePreview({
+  xrplAddress: preview.xrplSource,
+  planId: BigInt(preview.plan.id),
+  deposit: preview.deposit.display,
+  standing: preview.standing,
+});
+assertFreshPreviewMatches(preview, fresh);
 const wallet = Wallet.fromSeed(seed);
 if (wallet.address !== preview.xrplSource) {
   throw new Error(`XRPL_SEED derives ${wallet.address}, but preview is bound to ${preview.xrplSource}`);

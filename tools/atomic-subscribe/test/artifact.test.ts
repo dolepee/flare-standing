@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertPreviewIntegrity } from "../src/artifact.js";
+import { assertFreshPreviewMatches, assertPreviewIntegrity } from "../src/artifact.js";
 import type { AtomicSubscribePreview } from "../src/preflight.js";
 
 function preview(overrides: Partial<AtomicSubscribePreview> = {}): AtomicSubscribePreview {
@@ -33,6 +33,7 @@ function preview(overrides: Partial<AtomicSubscribePreview> = {}): AtomicSubscri
     instruction: {
       opcode: "0xFE",
       memoBytes: 42,
+      smartAccountExecutorFeeUBA: "0",
       memoData: `0x${"00".repeat(42)}`,
       packedUserOperation: "0x00",
       userOperationHash: `0x${"00".repeat(32)}`,
@@ -59,5 +60,22 @@ describe("atomic artifact boundary", () => {
     expect(() => assertPreviewIntegrity(preview())).not.toThrow();
     expect(() => assertPreviewIntegrity(preview({ readiness: "BLOCKED" }))).toThrow("blocked");
     expect(() => assertPreviewIntegrity(preview({ destinationTag: 7 as never }))).toThrow("destination tag");
+  });
+
+  it("rejects any execution-critical artifact drift", () => {
+    const committed = preview();
+    expect(() => assertFreshPreviewMatches(committed, preview())).not.toThrow();
+    expect(() =>
+      assertFreshPreviewMatches(
+        committed,
+        preview({ payment: { ...committed.payment, totalPaymentUBA: "1200001" } }),
+      ),
+    ).toThrow("drifted");
+    expect(() =>
+      assertFreshPreviewMatches(
+        committed,
+        preview({ xrplDestination: "rChangedDestination" }),
+      ),
+    ).toThrow("drifted");
   });
 });

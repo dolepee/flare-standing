@@ -25,5 +25,38 @@ export function assertPreviewIntegrity(preview: AtomicSubscribePreview): void {
   if (preview.instruction.opcode !== "0xFE" || preview.instruction.memoBytes !== 42) {
     throw new Error("preview does not contain a canonical 42-byte 0xFE instruction");
   }
+  if (preview.instruction.smartAccountExecutorFeeUBA !== "0") {
+    throw new Error("unexpected Smart Account executor fee in 0xFE instruction");
+  }
   if (preview.instruction.calls.length !== 2) throw new Error("preview must contain exactly two calls");
+}
+
+function criticalFields(preview: AtomicSubscribePreview) {
+  return {
+    network: preview.network,
+    chainId: preview.chainId,
+    xrplSource: preview.xrplSource,
+    xrplDestination: preview.xrplDestination,
+    destinationTag: preview.destinationTag,
+    personalAccount: preview.personalAccount,
+    standing: preview.standing,
+    fxrp: preview.fxrp,
+    assetManager: preview.assetManager,
+    plan: preview.plan,
+    deposit: preview.deposit,
+    nonce: preview.nonce,
+    payment: preview.payment,
+    instruction: preview.instruction,
+  };
+}
+
+export function assertFreshPreviewMatches(
+  committed: AtomicSubscribePreview,
+  fresh: AtomicSubscribePreview,
+): void {
+  assertPreviewIntegrity(committed);
+  assertPreviewIntegrity(fresh);
+  if (JSON.stringify(criticalFields(committed)) !== JSON.stringify(criticalFields(fresh))) {
+    throw new Error("live atomic-subscribe state drifted from the reviewed artifact");
+  }
 }
