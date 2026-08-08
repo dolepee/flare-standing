@@ -1,13 +1,23 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { AtomicSubscribePreview } from "./preflight.js";
 
-export type SentAtomicSubscribe = {
+type AtomicSubscribeSentBase = {
   version: 1;
   preview: AtomicSubscribePreview;
   xrplTransactionHash: string;
   sentAt: string;
-  execution: "PENDING";
 };
+
+export type SentAtomicSubscribe = AtomicSubscribeSentBase &
+  (
+    | { execution: "PENDING" }
+    | {
+        execution: "COMPLETE";
+        executorTransactionHash: string;
+        mandateId: string;
+        completedAt: string;
+      }
+  );
 
 export async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;

@@ -144,14 +144,21 @@ const executed = userOperations.find(
 );
 if (!executed) throw new Error("executor succeeded without the committed UserOperationExecuted event");
 
-await writePrivateJson(outputPath, {
+const completed = {
   version: 1,
   preview: committed,
   xrplTransactionHash: sent.xrplTransactionHash,
+  sentAt: sent.sentAt,
   executorTransactionHash: executorHash,
   mandateId: mandate.args.mandateId.toString(),
   completedAt: new Date().toISOString(),
   execution: "COMPLETE",
-});
+} satisfies SentAtomicSubscribe;
+
+// Invalidate the replay input first. If writing the convenience completion
+// copy fails afterward, the durable sent artifact still proves completion and
+// prevents another paid FDC request for the consumed XRPL transaction.
+await writePrivateJson(sentPath, completed);
+await writePrivateJson(outputPath, completed);
 console.log(`Atomic subscription complete: mandate ${mandate.args.mandateId}`);
 console.log(`Flare transaction: ${executorHash}`);
