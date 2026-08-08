@@ -110,13 +110,22 @@ const storedMandate = await client.readContract({
   functionName: "mandates",
   args: [mandate.args.mandateId],
 });
-const [storedPlanId, storedSubscriber, storedDeposited, storedRemaining, , storedLastChargeAt, storedCanceled] =
-  storedMandate;
+const [
+  storedPlanId,
+  storedSubscriber,
+  storedDeposited,
+  storedRemaining,
+  storedNextChargeAt,
+  storedLastChargeAt,
+  storedCanceled,
+] = storedMandate;
 if (
   storedPlanId !== BigInt(committed.plan.id) ||
   storedSubscriber.toLowerCase() !== committed.personalAccount.toLowerCase() ||
   storedDeposited !== BigInt(committed.deposit.atomic) ||
   storedRemaining !== BigInt(committed.deposit.atomic) ||
+  storedNextChargeAt === 0n ||
+  storedNextChargeAt !== mandate.args.firstChargeAt ||
   storedLastChargeAt !== 0n ||
   storedCanceled
 ) {
