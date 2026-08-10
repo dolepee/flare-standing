@@ -15,7 +15,6 @@ import { privateKeyToAccount } from "viem/accounts";
 import { Client } from "xrpl";
 import {
   acquireExecutionLock,
-  assertFreshPreviewMatches,
   assertPreviewIntegrity,
   createExecutionClaim,
   executionClaimPath,
@@ -27,6 +26,7 @@ import {
   type ExecutionProgress,
   type SentAtomicSubscribe,
 } from "./artifact.js";
+import { assertPostPaymentExecutionFreshness } from "./execution-freshness.js";
 import {
   assetManagerAbi,
   directMintingEventsAbi,
@@ -42,7 +42,7 @@ import { coston2, registryAddress } from "./config.js";
 import { buildCancelWithdrawPreview } from "./control.js";
 import { obtainXrpPaymentProof } from "./fdc.js";
 import { buildAtomicSubscribePreview } from "./preflight.js";
-import { validateImmediateOpenPostconditions } from "./postconditions.js";
+import { readMandateAtReceiptBlock, validateImmediateOpenPostconditions } from "./postconditions.js";
 import { decideDelayedMintResume } from "./recovery.js";
 import { deliveredNativePaymentDrops, requestedNativePaymentDrops } from "./xrpl.js";
 
@@ -364,11 +364,14 @@ async function finishFromReceipt(receipt: TransactionReceipt): Promise<"COMPLETE
     if (!("maxInitialChargeFxrp" in working.preview)) {
       throw new Error("V2 completion artifact omitted maxInitialChargeFxrp");
     }
-    const stored = await client.readContract({
-      address: getAddress(working.preview.standing),
-      abi: standingAbi,
-      functionName: "mandates",
-      args: [mandateId],
+    // A keeper can legitimately advance the mandate after this transaction lands.
+    // Bind the postcondition to the receipt's state instead of treating that later
+    // charge as a failed atomic subscription during recovery.
+    const stored = await readMandateAtReceiptBlock({
+      readContract: (request) => client.readContract(request),
+      standing: getAddress(working.preview.standing),
+      mandateId,
+      receiptBlockNumber: receipt.blockNumber,
     });
     validateImmediateOpenPostconditions({
       committed: {
@@ -470,7 +473,7 @@ if (working.progress.phase === "RECOVERY_REQUIRED") {
 }
 
 const fresh = await freshPreview(working.preview);
-assertFreshPreviewMatches(working.preview, fresh);
+assertPostPaymentExecutionFreshness(working.preview, fresh);
 const transactionId = `0x${working.xrplTransactionHash}`.toLowerCase() as Hex;
 
 if (working.progress.phase === "DELAYED") {

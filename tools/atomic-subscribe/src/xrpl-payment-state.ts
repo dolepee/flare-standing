@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
-import { dirname, extname } from "node:path";
-import { hashes } from "xrpl";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { hashes, isValidClassicAddress } from "xrpl";
 import {
   acquireFailClosedProcessLock,
   assertFreshPreviewMatches,
@@ -17,6 +18,7 @@ type PreparedPaymentState<Transaction> = {
   version: 1;
   phase: "PREPARED";
   preview: AtomicOperationPreview;
+  sentArtifactBasePath: string;
   preparedTransaction: Transaction;
   preparedAt: string;
 };
@@ -76,15 +78,25 @@ function validatedOperationHash(operationHash: string): string {
   return operationHash.slice(2).toLowerCase();
 }
 
-export function xrplPaymentStatePath(basePath: string, operationHash: string): string {
-  const digest = validatedOperationHash(operationHash);
-  const extension = extname(basePath);
-  const stem = extension ? basePath.slice(0, -extension.length) : basePath;
-  return `${stem}.xrpl-${digest}.state.json`;
+function validatedXrplSource(xrplSource: string): string {
+  if (!isValidClassicAddress(xrplSource)) {
+    throw new Error("preview XRPL source is not a valid classic address");
+  }
+  return xrplSource;
 }
 
-export function xrplPaymentLockPath(basePath: string, operationHash: string): string {
-  return `${xrplPaymentStatePath(basePath, operationHash)}.lock`;
+function xrplPaymentJournalDirectory(): string {
+  return join(homedir(), ".config", "flare-standing", "atomic-xrpl-payments");
+}
+
+export function xrplPaymentStatePath(xrplSource: string, operationHash: string): string {
+  const source = validatedXrplSource(xrplSource);
+  const digest = validatedOperationHash(operationHash);
+  return join(xrplPaymentJournalDirectory(), `xrpl-${source}-${digest}.state.json`);
+}
+
+export function xrplPaymentLockPath(xrplSource: string, operationHash: string): string {
+  return `${xrplPaymentStatePath(xrplSource, operationHash)}.lock`;
 }
 
 function isMissingFile(error: unknown): boolean {
@@ -131,6 +143,9 @@ function assertStateIntegrity<Transaction>(
 ): void {
   if (state.version !== 1) throw new Error("unsupported XRPL payment-state version");
   assertFreshPreviewMatches(state.preview, preview);
+  if (!isAbsolute(state.sentArtifactBasePath)) {
+    throw new Error("persisted XRPL payment state has a non-canonical sent artifact base path");
+  }
   if (state.phase === "PREPARED") return;
   const storedHash = validatedHash(state.xrplTransactionHash, "persisted XRPL transaction hash");
   const blobHash = validatedHash(hashes.hashSignedTx(state.signedTransactionBlob), "signed XRPL transaction hash");
@@ -192,6 +207,10 @@ async function runDurableXrplPaymentLocked<Transaction>(
       version: 1,
       phase: "PREPARED",
       preview: input.preview,
+      // The first invocation chooses the downstream executor artifact. Every
+      // replay reuses this durable absolute path even if SENT_FILE changes, so
+      // one XRPL payment can never fan out into independently executable files.
+      sentArtifactBasePath: resolve(input.outputBasePath),
       preparedTransaction: await input.prepareTransaction(),
       preparedAt: now(),
     };
@@ -231,6 +250,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
         version: 1,
         phase: "PREPARED",
         preview: state.preview,
+        sentArtifactBasePath: state.sentArtifactBasePath,
         preparedTransaction: replacementTransaction,
         preparedAt: now(),
       };
@@ -255,7 +275,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
 
   assertStateIntegrity(state, input.preview);
   const expectedHash = validatedHash(state.xrplTransactionHash, "persisted XRPL transaction hash");
-  const sentArtifactPath = transactionArtifactPath(input.outputBasePath, expectedHash);
+  const sentArtifactPath = transactionArtifactPath(state.sentArtifactBasePath, expectedHash);
 
   if (state.phase === "VALIDATED") {
     if (state.sentArtifactPath !== sentArtifactPath) {
@@ -321,9 +341,9 @@ export async function runDurableXrplPayment<Transaction>(
   input: RunDurableXrplPaymentInput<Transaction>,
 ): Promise<DurableXrplPaymentResult> {
   const operationHash = input.preview.instruction.userOperationHash;
-  const statePath = xrplPaymentStatePath(input.outputBasePath, operationHash);
+  const statePath = xrplPaymentStatePath(input.preview.xrplSource, operationHash);
   const lock = acquireFailClosedProcessLock(
-    xrplPaymentLockPath(input.outputBasePath, operationHash),
+    xrplPaymentLockPath(input.preview.xrplSource, operationHash),
     "XRPL payment state",
     {
       operation: operationKind(input.preview),

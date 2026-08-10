@@ -2,9 +2,15 @@ import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Wallet, type Payment } from "xrpl";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { encodeFunctionData } from "viem";
-import { readJson, writePrivateJson, type AtomicOperationPreview, type SentAtomicSubscribe } from "../src/artifact.js";
+import {
+  readJson,
+  transactionArtifactPath,
+  writePrivateJson,
+  type AtomicOperationPreview,
+  type SentAtomicSubscribe,
+} from "../src/artifact.js";
 import { standingAbi } from "../src/abis.js";
 import {
   runDurableXrplPayment,
@@ -15,6 +21,16 @@ import {
 } from "../src/xrpl-payment-state.js";
 
 type Operation = "SUBSCRIBE_V2" | "CANCEL_WITHDRAW";
+
+const originalHome = process.env.HOME;
+const paymentTestHome = await mkdtemp(join(tmpdir(), "standing-payment-home-"));
+process.env.HOME = paymentTestHome;
+
+afterAll(async () => {
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  await rm(paymentTestHome, { recursive: true, force: true });
+});
 
 function operationPreview(operation: Operation, xrplSource: string): AtomicOperationPreview {
   const shared = {
@@ -147,9 +163,19 @@ async function fixture(operation: Operation) {
 }
 
 describe("durable XRPL payment state", () => {
-  it("keys the recovery journal by the reviewed operation rather than an unknown future payment hash", () => {
-    expect(xrplPaymentStatePath("/tmp/sent.json", `0x${"ab".repeat(32)}`)).toBe(
-      `/tmp/sent.xrpl-${"ab".repeat(32)}.state.json`,
+  it("keys the app-owned recovery journal by validated XRPL source and reviewed operation", () => {
+    const xrplSource = Wallet.generate().address;
+    expect(xrplPaymentStatePath(xrplSource, `0x${"ab".repeat(32)}`)).toBe(
+      join(
+        paymentTestHome,
+        ".config",
+        "flare-standing",
+        "atomic-xrpl-payments",
+        `xrpl-${xrplSource}-${"ab".repeat(32)}.state.json`,
+      ),
+    );
+    expect(() => xrplPaymentStatePath("not-an-xrpl-address", `0x${"ab".repeat(32)}`)).toThrow(
+      "preview XRPL source is not a valid classic address",
     );
   });
 
@@ -182,7 +208,7 @@ describe("durable XRPL payment state", () => {
           });
 
         await expect(run(true)).rejects.toThrow("simulated crash");
-        const statePath = xrplPaymentStatePath(value.outputBasePath, value.preview.instruction.userOperationHash);
+        const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
         expect((await readJson<XrplPaymentState>(statePath)).phase).toBe("PREPARED");
 
         const completed = await run(false);
@@ -241,7 +267,7 @@ describe("durable XRPL payment state", () => {
           });
 
         await expect(run()).rejects.toThrow("simulated crash before signing");
-        const statePath = xrplPaymentStatePath(value.outputBasePath, value.preview.instruction.userOperationHash);
+        const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
         const crashedState = await readJson<XrplPaymentState<Payment>>(statePath);
         expect(crashedState.phase).toBe("PREPARED");
         if (crashedState.phase === "PREPARED") {
@@ -270,6 +296,7 @@ describe("durable XRPL payment state", () => {
 
     it("serializes concurrent replacement of the same expired PREPARED payment", async () => {
       const value = await fixture(operation);
+      const secondOutputBasePath = join(value.directory, "alternate-sent.json");
       const firstReplacement: Payment = {
         ...value.transaction,
         Sequence: 2,
@@ -339,7 +366,7 @@ describe("durable XRPL payment state", () => {
         await firstReplacementStarted;
         await expect(runDurableXrplPayment<Payment>({
           preview: value.preview,
-          outputBasePath: value.outputBasePath,
+          outputBasePath: secondOutputBasePath,
           validateBeforeSigning: async () => undefined,
           prepareTransaction: async () => {
             secondPrepares += 1;
@@ -372,12 +399,84 @@ describe("durable XRPL payment state", () => {
           expect(state.xrplTransactionHash).toBe(firstSigned.hash);
           expect(state.preparedTransaction.Sequence).toBe(2);
         }
-        await expect(access(xrplPaymentLockPath(value.outputBasePath, value.preview.instruction.userOperationHash))).rejects.toMatchObject({
+        await expect(access(xrplPaymentLockPath(value.preview.xrplSource, value.preview.instruction.userOperationHash))).rejects.toMatchObject({
           code: "ENOENT",
         });
       } finally {
         releaseFirstReplacement();
         await first?.catch(() => undefined);
+        await rm(value.directory, { recursive: true, force: true });
+      }
+    });
+
+    it("reconciles a sequential replay under a different output path without paying again", async () => {
+      const value = await fixture(operation);
+      const secondOutputBasePath = join(value.directory, "alternate-sent.json");
+      let prepares = 0;
+      let signs = 0;
+      let lookups = 0;
+      let broadcasts = 0;
+      try {
+        const first = await runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => undefined,
+          prepareTransaction: async () => {
+            prepares += 1;
+            return value.transaction;
+          },
+          signTransaction: (transaction) => {
+            signs += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 99,
+          lookupTransaction: async () => {
+            lookups += 1;
+            return null;
+          },
+          broadcastAndWait: async () => {
+            broadcasts += 1;
+            return success(value.signed.hash);
+          },
+        });
+
+        const replayed = await runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: secondOutputBasePath,
+          validateBeforeSigning: async () => {
+            throw new Error("validated replay must not revalidate before signing");
+          },
+          prepareTransaction: async () => {
+            throw new Error("validated replay must not prepare another payment");
+          },
+          signTransaction: () => {
+            throw new Error("validated replay must not sign another payment");
+          },
+          getValidatedLedgerIndex: async () => {
+            throw new Error("validated replay must not query ledger expiry");
+          },
+          lookupTransaction: async () => {
+            throw new Error("validated replay must not look up a second payment");
+          },
+          broadcastAndWait: async () => {
+            throw new Error("validated replay must not broadcast another payment");
+          },
+        });
+
+        expect(replayed.resumed).toBe(true);
+        expect(replayed.xrplTransactionHash).toBe(first.xrplTransactionHash);
+        expect(replayed.statePath).toBe(first.statePath);
+        expect(replayed.sentArtifactPath).toBe(first.sentArtifactPath);
+        expect(prepares).toBe(1);
+        expect(signs).toBe(1);
+        expect(lookups).toBe(1);
+        expect(broadcasts).toBe(1);
+        const state = await readJson<XrplPaymentState<Payment>>(replayed.statePath);
+        expect(state.sentArtifactBasePath).toBe(value.outputBasePath);
+        await expect(access(transactionArtifactPath(secondOutputBasePath, first.xrplTransactionHash))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      } finally {
         await rm(value.directory, { recursive: true, force: true });
       }
     });
@@ -415,7 +514,7 @@ describe("durable XRPL payment state", () => {
           });
 
         await expect(run()).rejects.toThrow("simulated crash before broadcast");
-        const statePath = xrplPaymentStatePath(value.outputBasePath, value.preview.instruction.userOperationHash);
+        const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
         const signedState = await readJson<XrplPaymentState>(statePath);
         expect(signedState.phase).toBe("SIGNED");
         if (signedState.phase === "SIGNED") expect(signedState.signedTransactionBlob).toBe(value.signed.tx_blob);
@@ -463,7 +562,7 @@ describe("durable XRPL payment state", () => {
           });
 
         await expect(run()).rejects.toThrow("simulated crash before broadcast");
-        const statePath = xrplPaymentStatePath(value.outputBasePath, value.preview.instruction.userOperationHash);
+        const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
         const signedBeforeExpiry = await readJson<XrplPaymentState<Payment>>(statePath);
         expect(signedBeforeExpiry.phase).toBe("SIGNED");
         if (signedBeforeExpiry.phase === "SIGNED") {

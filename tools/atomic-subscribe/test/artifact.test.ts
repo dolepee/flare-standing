@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
@@ -228,6 +228,25 @@ describe("atomic artifact boundary", () => {
       resumed.release();
     } finally {
       holder?.kill("SIGTERM");
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not change permissions on an existing caller-supplied lock directory", async () => {
+    if (process.platform === "win32") return;
+    const directory = await mkdtemp(join(tmpdir(), "standing-lock-mode-"));
+    const executorAddress = "0x1111111111111111111111111111111111111111";
+    try {
+      await chmod(directory, 0o755);
+      const before = (await stat(directory)).mode & 0o777;
+      const lock = acquireExecutionLock(executionLockPath(executorAddress, directory), {
+        xrplTransactionHash: "A".repeat(64),
+        userOperationHash: `0x${"11".repeat(32)}`,
+        executorAddress,
+      });
+      lock.release();
+      expect((await stat(directory)).mode & 0o777).toBe(before);
+    } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });

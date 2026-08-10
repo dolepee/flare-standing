@@ -1,5 +1,5 @@
 import { chmod, link, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
-import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname } from "node:os";
 import { dirname, extname, join } from "node:path";
@@ -159,7 +159,6 @@ export function executionClaimPath(
 export async function createExecutionClaim(path: string, value: unknown): Promise<void> {
   const directory = dirname(path);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await chmod(directory, 0o700);
   await writePrivateJsonExclusive(path, value);
 }
 
@@ -194,7 +193,6 @@ export function acquireFailClosedProcessLock(
 ): ExecutionLock {
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
 
   const ownerToken = randomUUID();
   const record = {

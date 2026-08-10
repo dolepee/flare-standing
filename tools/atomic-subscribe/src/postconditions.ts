@@ -1,4 +1,5 @@
 import type { Address } from "viem";
+import { standingAbi } from "./abis.js";
 
 export type StoredMandate = readonly [
   planId: bigint,
@@ -9,6 +10,29 @@ export type StoredMandate = readonly [
   lastChargeAt: bigint,
   canceled: boolean,
 ];
+
+export type MandateAtBlockRead = (request: {
+  address: Address;
+  abi: typeof standingAbi;
+  functionName: "mandates";
+  args: readonly [bigint];
+  blockNumber: bigint;
+}) => Promise<StoredMandate>;
+
+export async function readMandateAtReceiptBlock(input: {
+  readContract: MandateAtBlockRead;
+  standing: Address;
+  mandateId: bigint;
+  receiptBlockNumber: bigint;
+}): Promise<StoredMandate> {
+  return input.readContract({
+    address: input.standing,
+    abi: standingAbi,
+    functionName: "mandates",
+    args: [input.mandateId],
+    blockNumber: input.receiptBlockNumber,
+  });
+}
 
 export function validateImmediateOpenPostconditions(input: {
   committed: {

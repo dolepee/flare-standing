@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { validateImmediateOpenPostconditions, type StoredMandate } from "../src/postconditions.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  readMandateAtReceiptBlock,
+  validateImmediateOpenPostconditions,
+  type StoredMandate,
+} from "../src/postconditions.js";
 
 const subscriber = "0x1111111111111111111111111111111111111111" as const;
 const merchant = "0x2222222222222222222222222222222222222222" as const;
@@ -38,5 +42,29 @@ describe("V2 immediate-open postconditions", () => {
     const nextChargeDrift = valid();
     nextChargeDrift.charged.nextChargeAt = 201n;
     expect(() => validateImmediateOpenPostconditions(nextChargeDrift)).toThrow("stored mandate");
+  });
+
+  it("validates subscription state at the exact receipt block when a later keeper charge has advanced latest state", async () => {
+    const receiptBlockNumber = 12_345n;
+    const receiptBlockState = valid().stored;
+    const latestState = [4n, subscriber, 1_000n, 800n, 300n, 200n, false] as StoredMandate;
+    const readContract = vi.fn(async (request: { blockNumber: bigint }) =>
+      request.blockNumber === receiptBlockNumber ? receiptBlockState : latestState);
+
+    const stored = await readMandateAtReceiptBlock({
+      readContract,
+      standing: "0x3333333333333333333333333333333333333333",
+      mandateId: 7n,
+      receiptBlockNumber,
+    });
+
+    expect(readContract).toHaveBeenCalledOnce();
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "mandates",
+      args: [7n],
+      blockNumber: receiptBlockNumber,
+    }));
+    expect(validateImmediateOpenPostconditions({ ...valid(), stored })).toBe(100n);
+    expect(() => validateImmediateOpenPostconditions({ ...valid(), stored: latestState })).toThrow("stored mandate");
   });
 });
