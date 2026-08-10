@@ -152,6 +152,10 @@ function success(hash: string): XrplTransactionOutcome {
   return { hash, validated: true, transactionResult: "tesSUCCESS" };
 }
 
+function terminalFailure(hash: string, transactionResult = "tecUNFUNDED_PAYMENT"): XrplTransactionOutcome {
+  return { hash, validated: true, transactionResult };
+}
+
 async function fixture(operation: Operation) {
   const directory = await mkdtemp(join(tmpdir(), `standing-${operation.toLowerCase()}-`));
   const wallet = Wallet.generate();
@@ -658,6 +662,347 @@ describe("durable XRPL payment state", () => {
         expect(signs).toBe(1);
         expect(blobs).toEqual([value.signed.tx_blob, value.signed.tx_blob]);
       } finally {
+        await rm(value.directory, { recursive: true, force: true });
+      }
+    });
+
+    it("records a terminal failed payment, then revalidates and uses a fresh sequence on a later invocation", async () => {
+      const value = await fixture(operation);
+      const secondOutputBasePath = join(value.directory, "retry-sent.json");
+      const replacementTransaction: Payment = {
+        ...value.transaction,
+        Sequence: 2,
+        LastLedgerSequence: 200,
+      };
+      const replacementSigned = value.wallet.sign(replacementTransaction);
+      const ledger = new Map<string, XrplTransactionOutcome>();
+      const broadcasts: string[] = [];
+      let validations = 0;
+      let prepares = 0;
+      let signs = 0;
+      try {
+        const first = () => runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => {
+            validations += 1;
+          },
+          prepareTransaction: async () => {
+            prepares += 1;
+            return value.transaction;
+          },
+          signTransaction: (transaction) => {
+            signs += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 99,
+          lookupTransaction: async (hash) => ledger.get(hash) ?? null,
+          broadcastAndWait: async (blob) => {
+            broadcasts.push(blob);
+            const failed = terminalFailure(value.signed.hash);
+            ledger.set(value.signed.hash, failed);
+            return failed;
+          },
+        });
+
+        await expect(first()).rejects.toThrow(
+          "terminal failure recorded and no XRP was delivered",
+        );
+        const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
+        const failedState = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(failedState.phase).toBe("TERMINAL_FAILURE");
+        if (failedState.phase === "TERMINAL_FAILURE") {
+          expect(failedState.xrplTransactionHash).toBe(value.signed.hash);
+          expect(failedState.transactionResult).toBe("tecUNFUNDED_PAYMENT");
+          expect(failedState.preparedTransaction.Sequence).toBe(1);
+        }
+        await expect(access(transactionArtifactPath(value.outputBasePath, value.signed.hash))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+
+        const recovered = await runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          // A retry cannot redirect the executor artifact selected by the first
+          // invocation, even though the successful hash belongs to sequence 2.
+          outputBasePath: secondOutputBasePath,
+          validateBeforeSigning: async () => {
+            validations += 1;
+          },
+          prepareTransaction: async () => {
+            prepares += 1;
+            return replacementTransaction;
+          },
+          signTransaction: (transaction) => {
+            signs += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 101,
+          lookupTransaction: async (hash) => ledger.get(hash) ?? null,
+          broadcastAndWait: async (blob) => {
+            broadcasts.push(blob);
+            expect(blob).toBe(replacementSigned.tx_blob);
+            const succeeded = success(replacementSigned.hash);
+            ledger.set(replacementSigned.hash, succeeded);
+            return succeeded;
+          },
+        });
+
+        expect(recovered.xrplTransactionHash).toBe(replacementSigned.hash);
+        expect(recovered.sentArtifactPath).toBe(transactionArtifactPath(value.outputBasePath, replacementSigned.hash));
+        expect(recovered.sentArtifactPath).not.toBe(transactionArtifactPath(secondOutputBasePath, replacementSigned.hash));
+        expect(validations).toBe(2);
+        expect(prepares).toBe(2);
+        expect(signs).toBe(2);
+        expect(broadcasts).toEqual([value.signed.tx_blob, replacementSigned.tx_blob]);
+
+        const completedState = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(completedState.phase).toBe("VALIDATED");
+        expect(completedState.terminalFailures).toHaveLength(1);
+        expect(completedState.terminalFailures?.[0]).toMatchObject({
+          xrplTransactionHash: value.signed.hash,
+          transactionResult: "tecUNFUNDED_PAYMENT",
+          preparedTransaction: { Sequence: 1 },
+        });
+
+        const replayed = await runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: join(value.directory, "third-sent.json"),
+          validateBeforeSigning: async () => {
+            throw new Error("validated replay must not revalidate");
+          },
+          prepareTransaction: async () => {
+            throw new Error("validated replay must not prepare a third payment");
+          },
+          signTransaction: () => {
+            throw new Error("validated replay must not sign a third payment");
+          },
+          getValidatedLedgerIndex: async () => {
+            throw new Error("validated replay must not inspect ledger state");
+          },
+          lookupTransaction: async () => {
+            throw new Error("validated replay must not look up another payment");
+          },
+          broadcastAndWait: async () => {
+            throw new Error("validated replay must not broadcast another payment");
+          },
+        });
+        expect(replayed.xrplTransactionHash).toBe(replacementSigned.hash);
+        expect(replayed.sentArtifactPath).toBe(recovered.sentArtifactPath);
+        expect(broadcasts).toHaveLength(2);
+      } finally {
+        await rm(value.directory, { recursive: true, force: true });
+      }
+    });
+
+    it("journals a terminal failure discovered after a lost broadcast response before allowing retry", async () => {
+      const value = await fixture(operation);
+      const replacementTransaction: Payment = {
+        ...value.transaction,
+        Sequence: 2,
+        LastLedgerSequence: 200,
+      };
+      const replacementSigned = value.wallet.sign(replacementTransaction);
+      const failed = terminalFailure(value.signed.hash);
+      const ledger = new Map<string, XrplTransactionOutcome>();
+      let prepares = 0;
+      let signs = 0;
+      let broadcasts = 0;
+      let validations = 0;
+      try {
+        const common = {
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => {
+            validations += 1;
+          },
+          getValidatedLedgerIndex: async () => 101,
+          lookupTransaction: async (hash: string) => ledger.get(hash) ?? null,
+        };
+
+        await expect(runDurableXrplPayment<Payment>({
+          ...common,
+          prepareTransaction: async () => {
+            prepares += 1;
+            return value.transaction;
+          },
+          signTransaction: (transaction) => {
+            signs += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 99,
+          broadcastAndWait: async () => {
+            broadcasts += 1;
+            ledger.set(value.signed.hash, failed);
+            throw new Error("simulated lost response after terminal XRPL validation");
+          },
+        })).rejects.toThrow("simulated lost response");
+
+        const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
+        expect((await readJson<XrplPaymentState>(statePath)).phase).toBe("SIGNED");
+
+        await expect(runDurableXrplPayment<Payment>({
+          ...common,
+          prepareTransaction: async () => {
+            throw new Error("failure-discovery invocation must not prepare a replacement");
+          },
+          signTransaction: () => {
+            throw new Error("failure-discovery invocation must not sign a replacement");
+          },
+          broadcastAndWait: async () => {
+            throw new Error("failure-discovery invocation must not rebroadcast");
+          },
+        })).rejects.toThrow("terminal failure recorded and no XRP was delivered");
+
+        const terminalState = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(terminalState.phase).toBe("TERMINAL_FAILURE");
+        expect(prepares).toBe(1);
+        expect(signs).toBe(1);
+        expect(broadcasts).toBe(1);
+        expect(validations).toBe(1);
+
+        const recovered = await runDurableXrplPayment<Payment>({
+          ...common,
+          prepareTransaction: async () => {
+            prepares += 1;
+            return replacementTransaction;
+          },
+          signTransaction: (transaction) => {
+            signs += 1;
+            return value.wallet.sign(transaction);
+          },
+          broadcastAndWait: async () => {
+            broadcasts += 1;
+            return success(replacementSigned.hash);
+          },
+        });
+        expect(recovered.xrplTransactionHash).toBe(replacementSigned.hash);
+        expect(prepares).toBe(2);
+        expect(signs).toBe(2);
+        expect(broadcasts).toBe(2);
+        expect(validations).toBe(2);
+      } finally {
+        await rm(value.directory, { recursive: true, force: true });
+      }
+    });
+
+    it("requires revalidation and serializes concurrent recovery from a terminal payment failure", async () => {
+      const value = await fixture(operation);
+      const replacementTransaction: Payment = {
+        ...value.transaction,
+        Sequence: 2,
+        LastLedgerSequence: 200,
+      };
+      const replacementSigned = value.wallet.sign(replacementTransaction);
+      const failed = terminalFailure(value.signed.hash);
+      let releasePreparation!: () => void;
+      const preparationMayFinish = new Promise<void>((resolve) => {
+        releasePreparation = resolve;
+      });
+      let announcePreparation!: () => void;
+      const preparationStarted = new Promise<void>((resolve) => {
+        announcePreparation = resolve;
+      });
+      let winningValidations = 0;
+      let winningPrepares = 0;
+      let winningSigns = 0;
+      let winningBroadcasts = 0;
+      let losingValidations = 0;
+      let losingPrepares = 0;
+      let losingSigns = 0;
+      let losingBroadcasts = 0;
+      let winner: Promise<Awaited<ReturnType<typeof runDurableXrplPayment<Payment>>>> | undefined;
+      try {
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => undefined,
+          prepareTransaction: async () => value.transaction,
+          signTransaction: (transaction) => value.wallet.sign(transaction),
+          getValidatedLedgerIndex: async () => 99,
+          lookupTransaction: async () => null,
+          broadcastAndWait: async () => failed,
+        })).rejects.toThrow("terminal failure recorded");
+
+        // A terminal state is not retryable until the exact failed hash can be
+        // re-proven from a validated ledger.
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => {
+            losingValidations += 1;
+          },
+          prepareTransaction: async () => {
+            losingPrepares += 1;
+            return replacementTransaction;
+          },
+          signTransaction: (transaction) => {
+            losingSigns += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 101,
+          lookupTransaction: async () => null,
+          broadcastAndWait: async () => {
+            losingBroadcasts += 1;
+            return success(replacementSigned.hash);
+          },
+        })).rejects.toThrow("could not be revalidated");
+        expect([losingValidations, losingPrepares, losingSigns, losingBroadcasts]).toEqual([0, 0, 0, 0]);
+
+        winner = runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => {
+            winningValidations += 1;
+          },
+          prepareTransaction: async () => {
+            winningPrepares += 1;
+            announcePreparation();
+            await preparationMayFinish;
+            return replacementTransaction;
+          },
+          signTransaction: (transaction) => {
+            winningSigns += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 101,
+          lookupTransaction: async (hash) => hash === value.signed.hash ? failed : null,
+          broadcastAndWait: async () => {
+            winningBroadcasts += 1;
+            return success(replacementSigned.hash);
+          },
+        });
+
+        await preparationStarted;
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: join(value.directory, "concurrent-sent.json"),
+          validateBeforeSigning: async () => {
+            losingValidations += 1;
+          },
+          prepareTransaction: async () => {
+            losingPrepares += 1;
+            return replacementTransaction;
+          },
+          signTransaction: (transaction) => {
+            losingSigns += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 101,
+          lookupTransaction: async () => failed,
+          broadcastAndWait: async () => {
+            losingBroadcasts += 1;
+            return success(replacementSigned.hash);
+          },
+        })).rejects.toThrow("XRPL payment state is already locked");
+        expect([losingValidations, losingPrepares, losingSigns, losingBroadcasts]).toEqual([0, 0, 0, 0]);
+
+        releasePreparation();
+        const completed = await winner;
+        expect(completed.xrplTransactionHash).toBe(replacementSigned.hash);
+        expect([winningValidations, winningPrepares, winningSigns, winningBroadcasts]).toEqual([1, 1, 1, 1]);
+      } finally {
+        releasePreparation();
+        await winner?.catch(() => undefined);
         await rm(value.directory, { recursive: true, force: true });
       }
     });

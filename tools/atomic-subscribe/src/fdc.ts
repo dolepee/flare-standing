@@ -2,6 +2,7 @@ import {
   decodeAbiParameters,
   encodeFunctionData,
   keccak256,
+  parseTransaction,
   toHex,
   type AbiParameter,
   type Address,
@@ -33,9 +34,17 @@ export type FdcProofRequestState = {
   transactionId: Hex;
   proofOwner: Address;
   requestBytes: Hex;
-  phase: "PREPARED" | "SIGNED" | "REQUESTED" | "ROUND_IDENTIFIED";
+  phase: "PREPARED" | "SIGNED" | "REQUESTED" | "RETRYABLE" | "ROUND_IDENTIFIED";
   requestTransactionHash?: Hex;
   serializedRequestTransaction?: Hex;
+  requestTransactionNonce?: number;
+  minimumRequestNonce?: number;
+  revertedRequestTransactions?: readonly {
+    transactionHash: Hex;
+    nonce: number;
+    blockNumber: string;
+    revertedAt: string;
+  }[];
   requestBlockNumber?: string;
   votingRoundId?: number;
   protocolId?: number;
@@ -51,6 +60,27 @@ const responseAbi = (
 )?.inputs[0]?.components?.[1];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function assertTransactionNonce(nonce: unknown, label: string): asserts nonce is number {
+  if (typeof nonce !== "number" || !Number.isSafeInteger(nonce) || nonce < 0) {
+    throw new Error(`${label} omitted a safe transaction nonce`);
+  }
+}
+
+function signedTransactionNonce(state: FdcProofRequestState): number {
+  if (!state.serializedRequestTransaction) {
+    throw new Error("persisted FDC request omitted its signed transaction nonce");
+  }
+  const nonce = parseTransaction(state.serializedRequestTransaction).nonce;
+  assertTransactionNonce(nonce, "persisted FDC request");
+  if (state.requestTransactionNonce !== undefined) {
+    assertTransactionNonce(state.requestTransactionNonce, "persisted FDC request");
+    if (state.requestTransactionNonce !== nonce) {
+      throw new Error("persisted FDC request nonce does not match its signed transaction");
+    }
+  }
+  return nonce;
+}
 
 async function postJson(url: string, body: unknown, headers: Record<string, string> = {}) {
   const response = await fetch(url, {
@@ -90,6 +120,22 @@ export async function obtainXrpPaymentProof(input: {
     }
     if (state.proofOwner.toLowerCase() !== input.proofOwner.toLowerCase()) {
       throw new Error("persisted FDC request is bound to a different proof owner");
+    }
+    if (Boolean(state.requestTransactionHash) !== Boolean(state.serializedRequestTransaction)) {
+      throw new Error("persisted FDC request has an incomplete signed transaction");
+    }
+    if (
+      state.requestTransactionHash &&
+      state.serializedRequestTransaction &&
+      keccak256(state.serializedRequestTransaction).toLowerCase() !== state.requestTransactionHash.toLowerCase()
+    ) {
+      throw new Error("persisted FDC request hash does not match its signed transaction");
+    }
+    if (state.phase === "RETRYABLE") {
+      if (state.requestTransactionHash || state.serializedRequestTransaction) {
+        throw new Error("retryable FDC request still contains a reverted signed transaction");
+      }
+      assertTransactionNonce(state.minimumRequestNonce, "retryable FDC request");
     }
   } else {
     const prepared = await postJson(
@@ -138,20 +184,46 @@ export async function obtainXrpPaymentProof(input: {
       functionName: "getRequestFee",
       args: [request],
     });
+    let retryNonce: number | undefined;
+    if (state.phase === "RETRYABLE") {
+      assertTransactionNonce(state.minimumRequestNonce, "retryable FDC request");
+      const pendingNonce = await input.client.getTransactionCount({
+        address: input.walletClient.account!.address,
+        blockTag: "pending",
+      });
+      retryNonce = Math.max(pendingNonce, state.minimumRequestNonce);
+    }
     const preparedTransaction = await input.walletClient.prepareTransactionRequest({
       account: input.walletClient.account!,
       chain: input.walletClient.chain,
       to: fdcHub,
       data: encodeFunctionData({ abi: fdcHubAbi, functionName: "requestAttestation", args: [request] }),
       value: requestFee,
+      ...(retryNonce !== undefined ? { nonce: retryNonce } : {}),
     });
+    const requestTransactionNonce = (preparedTransaction as { nonce?: number }).nonce;
+    assertTransactionNonce(requestTransactionNonce, "prepared FDC request");
+    if (retryNonce !== undefined && requestTransactionNonce < retryNonce) {
+      throw new Error("prepared FDC retry did not advance beyond the consumed nonce");
+    }
     const serializedRequestTransaction = await input.walletClient.signTransaction(preparedTransaction as never);
+    const signedNonce = parseTransaction(serializedRequestTransaction).nonce;
+    assertTransactionNonce(signedNonce, "signed FDC request");
+    if (signedNonce !== requestTransactionNonce) {
+      throw new Error("signed FDC request did not preserve the prepared nonce");
+    }
     const hash = keccak256(serializedRequestTransaction);
+    if (state.revertedRequestTransactions?.some(
+      (reverted) => reverted.transactionHash.toLowerCase() === hash.toLowerCase(),
+    )) {
+      throw new Error("prepared FDC retry reused a reverted transaction hash");
+    }
     state = {
       ...state,
       phase: "SIGNED",
       requestTransactionHash: hash,
       serializedRequestTransaction,
+      requestTransactionNonce,
       updatedAt: new Date().toISOString(),
     };
     await input.onState?.(state);
@@ -181,7 +253,39 @@ export async function obtainXrpPaymentProof(input: {
     }
   }
   const receipt = await input.client.waitForTransactionReceipt({ hash: requestTransactionHash });
-  if (receipt.status !== "success") throw new Error(`FDC request transaction reverted: ${requestTransactionHash}`);
+  if (receipt.status !== "success") {
+    const nonce = signedTransactionNonce(state);
+    const revertedAt = new Date().toISOString();
+    const {
+      requestTransactionHash: _requestTransactionHash,
+      serializedRequestTransaction: _serializedRequestTransaction,
+      requestTransactionNonce: _requestTransactionNonce,
+      requestBlockNumber: _requestBlockNumber,
+      votingRoundId: _votingRoundId,
+      protocolId: _protocolId,
+      relay: _relay,
+      ...retryableBase
+    } = state;
+    state = {
+      ...retryableBase,
+      phase: "RETRYABLE",
+      minimumRequestNonce: nonce + 1,
+      revertedRequestTransactions: [
+        ...(state.revertedRequestTransactions ?? []),
+        {
+          transactionHash: requestTransactionHash,
+          nonce,
+          blockNumber: receipt.blockNumber.toString(),
+          revertedAt,
+        },
+      ],
+      updatedAt: revertedAt,
+    };
+    await input.onState?.(state);
+    throw new Error(
+      `FDC request transaction reverted: ${requestTransactionHash}; retry state persisted, rerun once after revalidation`,
+    );
+  }
   if (state.votingRoundId === undefined || state.protocolId === undefined || !state.relay) {
     const block = await input.client.getBlock({ blockNumber: receipt.blockNumber });
     const [firstRoundStart, roundDuration, protocolId] = await Promise.all([

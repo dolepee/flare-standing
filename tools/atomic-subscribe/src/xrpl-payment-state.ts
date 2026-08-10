@@ -21,6 +21,7 @@ type PreparedPaymentState<Transaction> = {
   sentArtifactBasePath: string;
   preparedTransaction: Transaction;
   preparedAt: string;
+  terminalFailures?: TerminalPaymentFailure<Transaction>[];
 };
 
 type SignedPaymentState<Transaction> = Omit<PreparedPaymentState<Transaction>, "phase"> & {
@@ -36,9 +37,25 @@ type ValidatedPaymentState<Transaction> = Omit<SignedPaymentState<Transaction>, 
   sentArtifactPath: string;
 };
 
+type TerminalFailedPaymentState<Transaction> = Omit<SignedPaymentState<Transaction>, "phase"> & {
+  phase: "TERMINAL_FAILURE";
+  failedAt: string;
+  transactionResult: string;
+};
+
+type TerminalPaymentFailure<Transaction> = {
+  preparedTransaction: Transaction;
+  signedTransactionBlob: string;
+  xrplTransactionHash: string;
+  signedAt: string;
+  failedAt: string;
+  transactionResult: string;
+};
+
 export type XrplPaymentState<Transaction = unknown> =
   | PreparedPaymentState<Transaction>
   | SignedPaymentState<Transaction>
+  | TerminalFailedPaymentState<Transaction>
   | ValidatedPaymentState<Transaction>;
 
 export type XrplTransactionOutcome = {
@@ -146,20 +163,65 @@ function assertStateIntegrity<Transaction>(
   if (!isAbsolute(state.sentArtifactBasePath)) {
     throw new Error("persisted XRPL payment state has a non-canonical sent artifact base path");
   }
+  for (const failure of state.terminalFailures ?? []) {
+    const failureHash = validatedHash(failure.xrplTransactionHash, "terminal XRPL transaction hash");
+    const blobHash = validatedHash(hashes.hashSignedTx(failure.signedTransactionBlob), "terminal signed XRPL transaction hash");
+    if (failureHash !== blobHash) {
+      throw new Error("terminal XRPL transaction hash does not match the signed transaction bytes");
+    }
+    assertTerminalResultCode(failure.transactionResult);
+  }
   if (state.phase === "PREPARED") return;
   const storedHash = validatedHash(state.xrplTransactionHash, "persisted XRPL transaction hash");
   const blobHash = validatedHash(hashes.hashSignedTx(state.signedTransactionBlob), "signed XRPL transaction hash");
   if (storedHash !== blobHash) throw new Error("persisted XRPL transaction hash does not match the signed transaction bytes");
+  if (state.phase === "TERMINAL_FAILURE") assertTerminalResultCode(state.transactionResult);
 }
 
-function assertSuccessfulOutcome(outcome: XrplTransactionOutcome, expectedHash: string): void {
+function assertOutcomeIdentity(outcome: XrplTransactionOutcome, expectedHash: string): void {
   if (validatedHash(outcome.hash, "XRPL result hash") !== expectedHash) {
     throw new Error("XRPL result hash does not match the persisted signed transaction");
   }
   if (!outcome.validated) throw new Error("XRPL payment did not reach a validated ledger");
+}
+
+function assertTerminalResultCode(transactionResult: string): void {
+  // Only tec-class failures can be included in a validated ledger. They consume
+  // the fee and account sequence but do not apply the Payment's transfer. This
+  // is the protocol-level proof that retrying cannot duplicate delivered XRP.
+  if (!/^tec[A-Z0-9_]+$/.test(transactionResult)) {
+    throw new Error(`XRPL payment has a non-terminal validated result ${transactionResult}`);
+  }
+}
+
+function assertSuccessfulOutcome(outcome: XrplTransactionOutcome, expectedHash: string): void {
+  assertOutcomeIdentity(outcome, expectedHash);
   if (outcome.transactionResult !== "tesSUCCESS") {
     throw new Error(`XRPL payment failed with ${outcome.transactionResult ?? "an unknown result"}`);
   }
+}
+
+function terminalResult(outcome: XrplTransactionOutcome, expectedHash: string): string {
+  assertOutcomeIdentity(outcome, expectedHash);
+  if (outcome.transactionResult === "tesSUCCESS") {
+    throw new Error("XRPL payment unexpectedly succeeded while reconciling a terminal failure");
+  }
+  if (typeof outcome.transactionResult !== "string") {
+    throw new Error("validated XRPL payment omitted its transaction result");
+  }
+  assertTerminalResultCode(outcome.transactionResult);
+  return outcome.transactionResult;
+}
+
+function preparedSequence(transaction: unknown): number {
+  if (typeof transaction !== "object" || transaction === null || !("Sequence" in transaction)) {
+    throw new Error("prepared XRPL transaction omitted Sequence");
+  }
+  const sequence = (transaction as { Sequence?: unknown }).Sequence;
+  if (!Number.isSafeInteger(sequence) || (sequence as number) <= 0) {
+    throw new Error("prepared XRPL transaction has an invalid Sequence");
+  }
+  return sequence as number;
 }
 
 function preparedLastLedgerSequence(transaction: unknown): number {
@@ -226,6 +288,62 @@ async function runDurableXrplPaymentLocked<Transaction>(
 
   assertStateIntegrity(state, input.preview);
 
+  if (state.phase === "TERMINAL_FAILURE") {
+    const failedHash = validatedHash(state.xrplTransactionHash, "persisted terminal XRPL transaction hash");
+    const confirmedFailure = await input.lookupTransaction(failedHash);
+    if (confirmedFailure === null) {
+      throw new Error(`terminal XRPL payment ${failedHash} could not be revalidated; refusing to prepare a replacement`);
+    }
+    const confirmedResult = terminalResult(confirmedFailure, failedHash);
+    if (confirmedResult !== state.transactionResult) {
+      throw new Error("revalidated XRPL failure result does not match the persisted terminal result");
+    }
+
+    // A retry is never automatic in the invocation that observed the failed
+    // payment. A fresh operator invocation reaches this branch, revalidates the
+    // exact failed hash, then re-runs every live pre-sign check before asking
+    // autofill for the account's next sequence.
+    await input.validateBeforeSigning();
+    validatedBeforeSigning = true;
+    const replacementTransaction = await input.prepareTransaction();
+    const failedSequence = preparedSequence(state.preparedTransaction);
+    const replacementSequence = preparedSequence(replacementTransaction);
+    if (replacementSequence <= failedSequence) {
+      throw new Error(
+        `replacement XRPL transaction sequence ${replacementSequence} is not after terminal sequence ${failedSequence}`,
+      );
+    }
+    const currentLedger = await validatedLedgerIndex(input);
+    const replacementLastLedger = preparedLastLedgerSequence(replacementTransaction);
+    if (replacementLastLedger <= currentLedger) {
+      throw new Error(
+        `replacement XRPL transaction expires at ledger ${replacementLastLedger}, not after validated ledger ${currentLedger}`,
+      );
+    }
+
+    const replacementState: PreparedPaymentState<Transaction> = {
+      version: 1,
+      phase: "PREPARED",
+      preview: state.preview,
+      sentArtifactBasePath: state.sentArtifactBasePath,
+      preparedTransaction: replacementTransaction,
+      preparedAt: now(),
+      terminalFailures: [
+        ...(state.terminalFailures ?? []),
+        {
+          preparedTransaction: state.preparedTransaction,
+          signedTransactionBlob: state.signedTransactionBlob,
+          xrplTransactionHash: failedHash,
+          signedAt: state.signedAt,
+          failedAt: state.failedAt,
+          transactionResult: state.transactionResult,
+        },
+      ],
+    };
+    await writePrivateJson(statePath, replacementState);
+    state = replacementState;
+  }
+
   if (state.phase === "PREPARED") {
     // PREPARED has no irreversible effect. If the process died before signing,
     // re-check live state so a stale contract nonce/mandate cannot turn into a
@@ -253,6 +371,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
         sentArtifactBasePath: state.sentArtifactBasePath,
         preparedTransaction: replacementTransaction,
         preparedAt: now(),
+        ...(state.terminalFailures === undefined ? {} : { terminalFailures: state.terminalFailures }),
       };
       await writePrivateJson(statePath, replacementState);
       state = replacementState;
@@ -296,6 +415,19 @@ async function runDurableXrplPaymentLocked<Transaction>(
   const existing = await input.lookupTransaction(expectedHash);
   let outcome = existing;
   if (outcome?.validated === true) {
+    if (outcome.transactionResult !== "tesSUCCESS") {
+      const transactionResult = terminalResult(outcome, expectedHash);
+      await writePrivateJson(statePath, {
+        ...state,
+        phase: "TERMINAL_FAILURE",
+        failedAt: now(),
+        transactionResult,
+      } satisfies TerminalFailedPaymentState<Transaction>);
+      throw new Error(
+        `XRPL payment failed with ${transactionResult}; terminal failure recorded and no XRP was delivered. ` +
+          "Run the command again to revalidate and prepare one fresh payment",
+      );
+    }
     assertSuccessfulOutcome(outcome, expectedHash);
   } else {
     const currentLedger = await validatedLedgerIndex(input);
@@ -307,6 +439,19 @@ async function runDurableXrplPaymentLocked<Transaction>(
       );
     }
     outcome = await input.broadcastAndWait(state.signedTransactionBlob);
+    if (outcome.transactionResult !== "tesSUCCESS") {
+      const transactionResult = terminalResult(outcome, expectedHash);
+      await writePrivateJson(statePath, {
+        ...state,
+        phase: "TERMINAL_FAILURE",
+        failedAt: now(),
+        transactionResult,
+      } satisfies TerminalFailedPaymentState<Transaction>);
+      throw new Error(
+        `XRPL payment failed with ${transactionResult}; terminal failure recorded and no XRP was delivered. ` +
+          "Run the command again to revalidate and prepare one fresh payment",
+      );
+    }
     assertSuccessfulOutcome(outcome, expectedHash);
   }
 
