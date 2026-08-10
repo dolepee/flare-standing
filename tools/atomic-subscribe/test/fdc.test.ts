@@ -387,4 +387,115 @@ describe("durable FDC proof acquisition", () => {
     expect(walletClient.signTransaction).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("settles a legacy pre-anchor signed request by its exact persisted receipt", async () => {
+    const registryAddresses: Record<string, Address> = {
+      FdcHub: address("2"),
+      FlareSystemsManager: address("3"),
+      Relay: address("4"),
+      FdcVerification: address("5"),
+    };
+    const client = {
+      readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "getContractAddressByName") return registryAddresses[String(request.args?.[0])];
+        if (request.functionName === "firstVotingRoundStartTs") return 100n;
+        if (request.functionName === "votingEpochDurationSeconds") return 10n;
+        if (request.functionName === "fdcProtocolId") return 7;
+        if (request.functionName === "isFinalized") return true;
+        throw new Error(`unexpected read ${request.functionName}`);
+      }),
+      sendRawTransaction: vi.fn(async () => {
+        throw new Error("already known or nonce too low");
+      }),
+      getTransactionReceipt: vi.fn(async () => ({ status: "success", blockNumber: 10n })),
+      waitForTransactionReceipt: vi.fn(),
+      getBlock: vi.fn(async () => ({ timestamp: 150n })),
+    };
+    const walletClient = {
+      chain: { id: 114 },
+      account: { address: proofOwner },
+      prepareTransactionRequest: vi.fn(),
+      signTransaction: vi.fn(),
+    };
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ response_hex: responseHex, proof: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const legacy: FdcProofRequestState = {
+      version: 1,
+      transactionId,
+      proofOwner,
+      requestBytes: "0x1234",
+      phase: "SIGNED",
+      requestTransactionHash,
+      serializedRequestTransaction,
+      requestTransactionNonce: 7,
+      createdAt: "2026-08-09T00:00:00.000Z",
+      updatedAt: "2026-08-09T00:01:00.000Z",
+    };
+
+    const result = await obtainXrpPaymentProof({
+      transactionId,
+      proofOwner,
+      client: client as never,
+      walletClient: walletClient as never,
+      verifierUrl: "https://verifier.invalid",
+      verifierApiKey: "secret",
+      daLayerUrl: "https://da.invalid",
+      resume: legacy,
+    });
+
+    expect(result.state.requestTransactionHash).toBe(requestTransactionHash);
+    expect(result.proof.data.requestBody.transactionId).toBe(transactionId);
+    expect(client.getTransactionReceipt).toHaveBeenCalledWith({ hash: requestTransactionHash });
+    expect(client.waitForTransactionReceipt).not.toHaveBeenCalled();
+    expect(walletClient.prepareTransactionRequest).not.toHaveBeenCalled();
+    expect(walletClient.signTransaction).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a legacy pre-anchor hash fail-closed when its exact receipt is absent", async () => {
+    const client = {
+      readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "getContractAddressByName") return address("2");
+        throw new Error(`unexpected read ${request.functionName}`);
+      }),
+      sendRawTransaction: vi.fn(async () => {
+        throw new Error("nonce too low");
+      }),
+      getTransactionReceipt: vi.fn(async () => {
+        throw new Error("transaction receipt not found");
+      }),
+    };
+    const walletClient = {
+      chain: { id: 114 },
+      account: { address: proofOwner },
+      prepareTransactionRequest: vi.fn(),
+      signTransaction: vi.fn(),
+    };
+    const legacy: FdcProofRequestState = {
+      version: 1,
+      transactionId,
+      proofOwner,
+      requestBytes: "0x1234",
+      phase: "SIGNED",
+      requestTransactionHash,
+      serializedRequestTransaction,
+      createdAt: "2026-08-09T00:00:00.000Z",
+      updatedAt: "2026-08-09T00:01:00.000Z",
+    };
+
+    await expect(obtainXrpPaymentProof({
+      transactionId,
+      proofOwner,
+      client: client as never,
+      walletClient: walletClient as never,
+      verifierUrl: "https://verifier.invalid",
+      verifierApiKey: "secret",
+      resume: legacy,
+    })).rejects.toThrow("no exact receipt and no pre-sign nonce anchor");
+
+    expect(client.getTransactionReceipt).toHaveBeenCalledWith({ hash: requestTransactionHash });
+    expect(walletClient.prepareTransactionRequest).not.toHaveBeenCalled();
+    expect(walletClient.signTransaction).not.toHaveBeenCalled();
+  });
 });

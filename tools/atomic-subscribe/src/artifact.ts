@@ -15,8 +15,11 @@ export type AtomicOperationPreview = AtomicSubscribePreview | AtomicCancelWithdr
 export type ExecutionAttempt = {
   transactionHash: `0x${string}`;
   serializedTransaction: `0x${string}`;
-  nonce: number;
-  nonceAnchor: FinalizedNonceAnchor;
+  // Legacy attempts written before finalized nonce anchoring omit both fields.
+  // They may settle only by their exact persisted hash and can never be
+  // rebound to a synthetic anchor.
+  nonce?: number;
+  nonceAnchor?: FinalizedNonceAnchor;
   submittedAt: string;
   receiptBlock?: string;
   supersededBy?: { transactionHash: `0x${string}`; blockNumber: string };

@@ -53,6 +53,7 @@ import {
   proveFinalizedNonceDisposition,
   viemFinalizedNonceRpc,
 } from "./coston2-nonce-recovery.js";
+import { validatePersistedExecutionAttempt } from "./execution-attempt.js";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -252,28 +253,11 @@ async function recoverUnrecordedSuccessfulTransaction(): Promise<TransactionRece
   return client.getTransactionReceipt({ hash: event.transactionHash });
 }
 
-async function verifyPersistedExecutionAttempt(
-  attempt: NonNullable<ExecutionProgress["attempts"]>[number],
-): Promise<void> {
-  if (keccak256(attempt.serializedTransaction).toLowerCase() !== attempt.transactionHash.toLowerCase()) {
-    throw new Error("persisted executor transaction hash does not match its signed bytes");
-  }
-  const parsedNonce = parseTransaction(attempt.serializedTransaction).nonce;
-  if (parsedNonce === undefined || !Number.isSafeInteger(parsedNonce) || parsedNonce < 0 || parsedNonce !== attempt.nonce) {
-    throw new Error("persisted executor transaction nonce does not match its signed bytes");
-  }
-  const signer = await recoverTransactionAddress({
-    serializedTransaction: attempt.serializedTransaction as TransactionSerialized,
-  });
-  if (signer.toLowerCase() !== account.address.toLowerCase()) {
-    throw new Error("persisted executor transaction was signed by a different account");
-  }
-}
-
 async function markExecutionAttemptDisplaced(
   attempt: NonNullable<ExecutionProgress["attempts"]>[number],
   transactionHash: Hex,
   blockNumber: string,
+  nonce: number,
 ): Promise<void> {
   const attempts = (working.progress.attempts ?? []).map((candidate) =>
     candidate.transactionHash.toLowerCase() === attempt.transactionHash.toLowerCase()
@@ -290,7 +274,7 @@ async function markExecutionAttemptDisplaced(
     attempts,
     lastError: {
       at: new Date().toISOString(),
-      message: `executor nonce ${attempt.nonce} was consumed by finalized transaction ${transactionHash}`,
+      message: `executor nonce ${nonce} was consumed by finalized transaction ${transactionHash}`,
     },
   });
 }
@@ -299,19 +283,32 @@ async function reconcileExecutionAttemptAfterError(
   attempt: NonNullable<ExecutionProgress["attempts"]>[number],
   originalError: unknown,
 ): Promise<TransactionReceipt | "SUPERSEDED"> {
-  await verifyPersistedExecutionAttempt(attempt);
+  const parsedNonce = await validatePersistedExecutionAttempt(attempt, account.address);
+  try {
+    // Settle historical pre-anchor attempts by their exact immutable hash.
+    // A missing exact receipt never authorizes synthesizing an anchor.
+    return await client.getTransactionReceipt({ hash: attempt.transactionHash });
+  } catch {
+    if (attempt.nonce === undefined || !attempt.nonceAnchor) {
+      throw new Error(
+        `legacy executor transaction ${attempt.transactionHash} has no exact receipt and no pre-sign nonce anchor; ` +
+          "retaining the original signed bytes and refusing to re-sign",
+        { cause: originalError },
+      );
+    }
+  }
   const disposition = await proveFinalizedNonceDisposition({
     rpc: viemFinalizedNonceRpc(client),
     anchor: attempt.nonceAnchor,
     executorAddress: account.address,
-    nonce: attempt.nonce,
+    nonce: parsedNonce,
     signedTransactionHash: attempt.transactionHash,
   });
   if (disposition.kind === "NOT_CONSUMED") throw originalError;
   if (disposition.kind === "EXACT_HASH_MINED") {
     return client.getTransactionReceipt({ hash: attempt.transactionHash });
   }
-  await markExecutionAttemptDisplaced(attempt, disposition.transactionHash, disposition.blockNumber);
+  await markExecutionAttemptDisplaced(attempt, disposition.transactionHash, disposition.blockNumber, parsedNonce);
   return "SUPERSEDED";
 }
 
@@ -321,7 +318,7 @@ async function settleExecutionAttempt(
   if (attempt.outcome !== "SIGNED" && attempt.outcome !== "PENDING") {
     throw new Error("executor attempt is not eligible for settlement");
   }
-  await verifyPersistedExecutionAttempt(attempt);
+  await validatePersistedExecutionAttempt(attempt, account.address);
   try {
     const broadcastHash = await client.sendRawTransaction({ serializedTransaction: attempt.serializedTransaction });
     if (broadcastHash.toLowerCase() !== attempt.transactionHash.toLowerCase()) {

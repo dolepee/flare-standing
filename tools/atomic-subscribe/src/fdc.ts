@@ -140,8 +140,8 @@ export async function obtainXrpPaymentProof(input: {
     if (Boolean(state.requestTransactionHash) !== Boolean(state.serializedRequestTransaction)) {
       throw new Error("persisted FDC request has an incomplete signed transaction");
     }
-    if (Boolean(state.requestTransactionHash) !== Boolean(state.requestNonceAnchor)) {
-      throw new Error("persisted FDC request has an incomplete finalized nonce anchor");
+    if (state.requestNonceAnchor && !state.requestTransactionHash) {
+      throw new Error("persisted FDC request has a nonce anchor without a signed transaction");
     }
     if (
       state.requestTransactionHash &&
@@ -274,13 +274,82 @@ export async function obtainXrpPaymentProof(input: {
     };
     await input.onState?.(state);
   }
+  if (!state) throw new Error("FDC request state was not initialized");
   const requestTransactionHash = state.requestTransactionHash;
   const serializedRequestTransaction = state.serializedRequestTransaction;
   const requestNonceAnchor = state.requestNonceAnchor;
-  if (!requestTransactionHash || !serializedRequestTransaction || !requestNonceAnchor) {
+  if (!requestTransactionHash || !serializedRequestTransaction) {
     throw new Error("persisted FDC request omitted its signed transaction");
   }
   let receipt: Awaited<ReturnType<typeof input.client.waitForTransactionReceipt>>;
+  async function receiptAfterSignedTransactionError(originalError: unknown): Promise<typeof receipt> {
+    const currentState = state;
+    const exactHash = requestTransactionHash;
+    if (!currentState || !exactHash) throw new Error("FDC request state disappeared during exact-hash recovery");
+    try {
+      // Legacy and anchored artifacts both get the cheapest and strongest
+      // recovery first: settle the exact persisted hash if it already mined.
+      return await input.client.getTransactionReceipt({ hash: exactHash });
+    } catch {
+      if (!requestNonceAnchor) {
+        throw new Error(
+          `legacy FDC request ${exactHash} has no exact receipt and no pre-sign nonce anchor; ` +
+            "retaining the original signed bytes and refusing to re-sign",
+          { cause: originalError },
+        );
+      }
+    }
+
+    // Cover both an immediate nonce-too-low broadcast failure and a hash that
+    // entered a mempool but later lost the nonce race before receipt wait.
+    const nonce = signedTransactionNonce(currentState);
+    const disposition = await proveFinalizedNonceDisposition({
+      rpc: viemFinalizedNonceRpc(input.client),
+      anchor: requestNonceAnchor,
+      executorAddress: input.walletClient.account!.address,
+      nonce,
+      signedTransactionHash: exactHash,
+    });
+    if (disposition.kind === "NOT_CONSUMED") throw originalError;
+    if (disposition.kind === "EXACT_HASH_MINED") {
+      return input.client.getTransactionReceipt({ hash: exactHash });
+    }
+
+    const displacedAt = new Date().toISOString();
+    const {
+      requestTransactionHash: _requestTransactionHash,
+      serializedRequestTransaction: _serializedRequestTransaction,
+      requestTransactionNonce: _requestTransactionNonce,
+      requestNonceAnchor: _requestNonceAnchor,
+      requestBlockNumber: _requestBlockNumber,
+      votingRoundId: _votingRoundId,
+      protocolId: _protocolId,
+      relay: _relay,
+      ...retryableBase
+    } = currentState;
+    const retryableState: FdcProofRequestState = {
+      ...retryableBase,
+      phase: "RETRYABLE",
+      minimumRequestNonce: nonce + 1,
+      displacedRequestTransactions: [
+        ...(currentState.displacedRequestTransactions ?? []),
+        {
+          transactionHash: exactHash,
+          nonce,
+          consumingTransactionHash: disposition.transactionHash,
+          blockNumber: disposition.blockNumber,
+          displacedAt,
+        },
+      ],
+      updatedAt: displacedAt,
+    };
+    state = retryableState;
+    await input.onState?.(retryableState);
+    throw new Error(
+      `FDC request nonce ${nonce} was consumed by finalized transaction ${disposition.transactionHash}; ` +
+        "retry state persisted, rerun once to sign the same request at a fresh nonce",
+    );
+  }
   if (state.phase === "SIGNED" || state.phase === "REQUESTED") {
     try {
       const broadcastHash = await input.client.sendRawTransaction({ serializedTransaction: serializedRequestTransaction });
@@ -293,57 +362,14 @@ export async function obtainXrpPaymentProof(input: {
       }
       receipt = await input.client.waitForTransactionReceipt({ hash: requestTransactionHash });
     } catch (error) {
-      // Cover both an immediate nonce-too-low broadcast failure and a hash that
-      // entered a mempool but later lost the nonce race before receipt wait.
-      const nonce = signedTransactionNonce(state);
-      const disposition = await proveFinalizedNonceDisposition({
-        rpc: viemFinalizedNonceRpc(input.client),
-        anchor: requestNonceAnchor,
-        executorAddress: input.walletClient.account!.address,
-        nonce,
-        signedTransactionHash: requestTransactionHash,
-      });
-      if (disposition.kind === "NOT_CONSUMED") throw error;
-      if (disposition.kind === "EXACT_HASH_MINED") {
-        receipt = await input.client.getTransactionReceipt({ hash: requestTransactionHash });
-      } else {
-        const displacedAt = new Date().toISOString();
-        const {
-          requestTransactionHash: _requestTransactionHash,
-          serializedRequestTransaction: _serializedRequestTransaction,
-          requestTransactionNonce: _requestTransactionNonce,
-          requestNonceAnchor: _requestNonceAnchor,
-          requestBlockNumber: _requestBlockNumber,
-          votingRoundId: _votingRoundId,
-          protocolId: _protocolId,
-          relay: _relay,
-          ...retryableBase
-        } = state;
-        state = {
-          ...retryableBase,
-          phase: "RETRYABLE",
-          minimumRequestNonce: nonce + 1,
-          displacedRequestTransactions: [
-            ...(state.displacedRequestTransactions ?? []),
-            {
-              transactionHash: requestTransactionHash,
-              nonce,
-              consumingTransactionHash: disposition.transactionHash,
-              blockNumber: disposition.blockNumber,
-              displacedAt,
-            },
-          ],
-          updatedAt: displacedAt,
-        };
-        await input.onState?.(state);
-        throw new Error(
-          `FDC request nonce ${nonce} was consumed by finalized transaction ${disposition.transactionHash}; ` +
-            "retry state persisted, rerun once to sign the same request at a fresh nonce",
-        );
-      }
+      receipt = await receiptAfterSignedTransactionError(error);
     }
   } else {
-    receipt = await input.client.waitForTransactionReceipt({ hash: requestTransactionHash });
+    try {
+      receipt = await input.client.waitForTransactionReceipt({ hash: requestTransactionHash });
+    } catch (error) {
+      receipt = await receiptAfterSignedTransactionError(error);
+    }
   }
   if (receipt.status !== "success") {
     const nonce = signedTransactionNonce(state);
