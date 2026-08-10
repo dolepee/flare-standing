@@ -1,10 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { getAddress } from "viem";
 import { hashes, isValidClassicAddress } from "xrpl";
 import {
   acquireFailClosedProcessLock,
   assertFreshPreviewMatches,
+  assertPreviewIntegrity,
   operationKind,
   readJson,
   transactionArtifactPath,
@@ -71,6 +73,17 @@ export type DurableXrplPaymentResult = {
   resumed: boolean;
 };
 
+export type UserOperationNonceReservation = {
+  version: 1;
+  chainId: number;
+  personalAccount: `0x${string}`;
+  nonce: string;
+  userOperationHash: `0x${string}`;
+  operation: "SUBSCRIBE_V2" | "CANCEL_WITHDRAW";
+  xrplSource: string;
+  reservedAt: string;
+};
+
 type RunDurableXrplPaymentInput<Transaction> = {
   preview: AtomicOperationPreview;
   outputBasePath: string;
@@ -93,6 +106,105 @@ function validatedOperationHash(operationHash: string): string {
     throw new Error("preview user operation hash is invalid");
   }
   return operationHash.slice(2).toLowerCase();
+}
+
+function canonicalChainId(chainId: number): number {
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("preview chain id is invalid");
+  return chainId;
+}
+
+function canonicalPersonalAccount(personalAccount: string): `0x${string}` {
+  return getAddress(personalAccount).toLowerCase() as `0x${string}`;
+}
+
+function canonicalNonce(nonce: string): string {
+  if (!/^\d+$/.test(nonce)) throw new Error("preview Personal Account nonce is invalid");
+  return BigInt(nonce).toString();
+}
+
+function userOperationNonceReservationDirectory(): string {
+  return join(homedir(), ".config", "flare-standing", "atomic-userop-nonce-reservations");
+}
+
+export function userOperationNonceReservationPath(
+  chainId: number,
+  personalAccount: string,
+  nonce: string,
+): string {
+  const canonicalChain = canonicalChainId(chainId);
+  const canonicalAccount = canonicalPersonalAccount(personalAccount);
+  const canonicalAccountNonce = canonicalNonce(nonce);
+  return join(
+    userOperationNonceReservationDirectory(),
+    `chain-${canonicalChain}-personal-${canonicalAccount}-nonce-${canonicalAccountNonce}.json`,
+  );
+}
+
+function expectedNonceReservation(
+  preview: AtomicOperationPreview,
+  reservedAt: string,
+): UserOperationNonceReservation {
+  assertPreviewIntegrity(preview);
+  const operation = operationKind(preview);
+  if (operation === "LEGACY_SUBSCRIBE") throw new Error("legacy subscription cannot reserve a Personal Account nonce");
+  return {
+    version: 1,
+    chainId: canonicalChainId(preview.chainId),
+    personalAccount: canonicalPersonalAccount(preview.personalAccount),
+    nonce: canonicalNonce(preview.nonce),
+    userOperationHash: `0x${validatedOperationHash(preview.instruction.userOperationHash)}`,
+    operation,
+    xrplSource: validatedXrplSource(preview.xrplSource),
+    reservedAt,
+  };
+}
+
+function assertNonceReservationIntegrity(
+  reservation: UserOperationNonceReservation,
+  expected: UserOperationNonceReservation,
+): void {
+  if (
+    reservation.version !== 1 ||
+    reservation.chainId !== expected.chainId ||
+    canonicalPersonalAccount(reservation.personalAccount) !== expected.personalAccount ||
+    canonicalNonce(reservation.nonce) !== expected.nonce ||
+    validatedXrplSource(reservation.xrplSource) !== expected.xrplSource ||
+    (reservation.operation !== "SUBSCRIBE_V2" && reservation.operation !== "CANCEL_WITHDRAW") ||
+    typeof reservation.reservedAt !== "string"
+  ) {
+    throw new Error("persisted Personal Account nonce reservation is invalid");
+  }
+  validatedOperationHash(reservation.userOperationHash);
+}
+
+/**
+ * Atomically binds one Personal Account nonce to exactly one UserOperation hash.
+ * The durable reservation is deliberately not a process lock: a same-hash crash
+ * resume owns it, while every distinct operation fails before XRPL signing.
+ */
+export async function reserveUserOperationNonce(
+  preview: AtomicOperationPreview,
+  now = new Date().toISOString(),
+): Promise<{ path: string; resumed: boolean }> {
+  const expected = expectedNonceReservation(preview, now);
+  const path = userOperationNonceReservationPath(expected.chainId, expected.personalAccount, expected.nonce);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  try {
+    await writePrivateJsonExclusive(path, expected);
+    return { path, resumed: false };
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+  }
+
+  const existing = await readJson<UserOperationNonceReservation>(path);
+  assertNonceReservationIntegrity(existing, expected);
+  if (validatedOperationHash(existing.userOperationHash) !== validatedOperationHash(expected.userOperationHash)) {
+    throw new Error(
+      `Personal Account nonce ${expected.nonce} on chain ${expected.chainId} is already reserved for ` +
+        `${existing.userOperationHash} (${existing.operation}); refusing ${expected.operation} before XRPL signing`,
+    );
+  }
+  return { path, resumed: true };
 }
 
 function validatedXrplSource(xrplSource: string): string {
@@ -288,6 +400,16 @@ async function runDurableXrplPaymentLocked<Transaction>(
 
   assertStateIntegrity(state, input.preview);
 
+  let nonceReservationChecked = false;
+  const ensureNonceReservation = async (): Promise<void> => {
+    if (nonceReservationChecked) return;
+    await reserveUserOperationNonce(input.preview, now());
+    nonceReservationChecked = true;
+  };
+  // Existing SIGNED/VALIDATED states already crossed the irreversible signing
+  // boundary. Recreate or verify their binding before any reconciliation.
+  if (state.phase !== "PREPARED") await ensureNonceReservation();
+
   if (state.phase === "TERMINAL_FAILURE") {
     const failedHash = validatedHash(state.xrplTransactionHash, "persisted terminal XRPL transaction hash");
     const confirmedFailure = await input.lookupTransaction(failedHash);
@@ -377,6 +499,10 @@ async function runDurableXrplPaymentLocked<Transaction>(
       state = replacementState;
     }
 
+    // This is the canonical cross-operation exclusion boundary. Distinct
+    // SUBSCRIBE/CANCEL operations may have separate payment journals and live
+    // locks, but only one hash can reserve this (chain, account, nonce) tuple.
+    await ensureNonceReservation();
     const signed = input.signTransaction(state.preparedTransaction);
     const signedHash = validatedHash(signed.hash, "wallet-supplied XRPL transaction hash");
     const derivedHash = validatedHash(hashes.hashSignedTx(signed.tx_blob), "signed XRPL transaction hash");

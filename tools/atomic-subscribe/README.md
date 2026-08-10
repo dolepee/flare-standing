@@ -62,7 +62,9 @@ Both `DirectMintingDelayed` and `LargeDirectMintingDelayed` are normal resumable
 
 Transactions are signed and their deterministic hashes are written durably before broadcast. If the process loses the response after broadcast, a retry rebroadcasts the identical signed bytes and nonce, or reconciles the receipt by the XRPL transaction id. Do not delete the claim, edit the artifact, or rerun `npm run send` to recover execution.
 
-If a receipt reverts outside a live minting delay, the artifact moves to `RECOVERY_REQUIRED`. Preserve it. Flare's separately XRP-authorized `0xE0` ignore-memo path can release FXRP from a genuinely broken memo, but this executor never manufactures that user authorization automatically.
+Before XRPL signing, the tool also creates a durable canonical reservation keyed by Coston2 chain id, derived Personal Account, and Smart Account nonce. The reservation binds exactly one `userOperationHash`, so a concurrent subscribe or cancel built at the same nonce fails before signing or paying XRP. Same-operation crash recovery reuses the binding. Reservations are immutable tombstones and are never removed: successful execution advances the on-chain nonce, so later valid operations use a new key, while a stale operation can never become signable after completion cleanup.
+
+If a receipt reverts outside a live minting delay, the artifact moves to `RECOVERY_REQUIRED`. Preserve it. Flare's separately XRP-authorized `0xE0` ignore-memo path can release FXRP from a genuinely broken memo, but this executor never manufactures that user authorization automatically. An external `0xE0` recovery does not remove or bypass the immutable local nonce reservation.
 
 ## Review-first cancel and unused-FXRP withdrawal
 

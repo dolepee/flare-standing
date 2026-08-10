@@ -2,7 +2,7 @@ import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Wallet, type Payment } from "xrpl";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { encodeFunctionData } from "viem";
 import {
   readJson,
@@ -14,8 +14,11 @@ import {
 import { standingAbi } from "../src/abis.js";
 import {
   runDurableXrplPayment,
+  reserveUserOperationNonce,
+  userOperationNonceReservationPath,
   xrplPaymentLockPath,
   xrplPaymentStatePath,
+  type UserOperationNonceReservation,
   type XrplPaymentState,
   type XrplTransactionOutcome,
 } from "../src/xrpl-payment-state.js";
@@ -30,6 +33,13 @@ afterAll(async () => {
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
   await rm(paymentTestHome, { recursive: true, force: true });
+});
+
+afterEach(async () => {
+  await rm(join(paymentTestHome, ".config", "flare-standing", "atomic-userop-nonce-reservations"), {
+    recursive: true,
+    force: true,
+  });
 });
 
 function operationPreview(operation: Operation, xrplSource: string): AtomicOperationPreview {
@@ -166,6 +176,115 @@ async function fixture(operation: Operation) {
   return { directory, wallet, preview, transaction, signed, outputBasePath };
 }
 
+function withDistinctUserOperation(
+  preview: AtomicOperationPreview,
+  hashByte: string,
+): AtomicOperationPreview {
+  return {
+    ...preview,
+    instruction: {
+      ...preview.instruction,
+      memoData: `0x${hashByte.repeat(42)}` as `0x${string}`,
+      packedUserOperation: `0x${hashByte.repeat(4)}` as `0x${string}`,
+      userOperationHash: `0x${hashByte.repeat(32)}` as `0x${string}`,
+    },
+  };
+}
+
+async function expectConcurrentNonceReservation(
+  secondOperation: Operation,
+): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), `standing-subscribe-${secondOperation.toLowerCase()}-race-`));
+  const wallet = Wallet.generate();
+  const firstPreview = operationPreview("SUBSCRIBE_V2", wallet.address);
+  const secondBase = operationPreview(secondOperation, wallet.address);
+  const secondPreview = secondOperation === "SUBSCRIBE_V2"
+    ? withDistinctUserOperation(secondBase, "33")
+    : secondBase;
+  const firstTransaction = preparedPayment(wallet, firstPreview);
+  const secondTransaction = preparedPayment(wallet, secondPreview);
+  const firstSigned = wallet.sign(firstTransaction);
+  let announceFirstSigned!: () => void;
+  const firstSignedAndReserved = new Promise<void>((resolve) => {
+    announceFirstSigned = resolve;
+  });
+  let releaseFirst!: () => void;
+  const firstMayFinish = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  let secondValidations = 0;
+  let secondPrepares = 0;
+  let secondSigns = 0;
+  let secondLookups = 0;
+  let secondBroadcasts = 0;
+  let first: Promise<Awaited<ReturnType<typeof runDurableXrplPayment<Payment>>>> | undefined;
+
+  try {
+    first = runDurableXrplPayment<Payment>({
+      preview: firstPreview,
+      outputBasePath: join(directory, "first-sent.json"),
+      validateBeforeSigning: async () => undefined,
+      prepareTransaction: async () => firstTransaction,
+      signTransaction: (transaction) => wallet.sign(transaction),
+      getValidatedLedgerIndex: async () => 99,
+      lookupTransaction: async () => {
+        announceFirstSigned();
+        await firstMayFinish;
+        return null;
+      },
+      broadcastAndWait: async (blob) => {
+        expect(blob).toBe(firstSigned.tx_blob);
+        return success(firstSigned.hash);
+      },
+    });
+
+    await firstSignedAndReserved;
+    await expect(runDurableXrplPayment<Payment>({
+      preview: secondPreview,
+      outputBasePath: join(directory, "second-sent.json"),
+      validateBeforeSigning: async () => {
+        secondValidations += 1;
+      },
+      prepareTransaction: async () => {
+        secondPrepares += 1;
+        return secondTransaction;
+      },
+      signTransaction: (transaction) => {
+        secondSigns += 1;
+        return wallet.sign(transaction);
+      },
+      getValidatedLedgerIndex: async () => 99,
+      lookupTransaction: async () => {
+        secondLookups += 1;
+        return null;
+      },
+      broadcastAndWait: async () => {
+        secondBroadcasts += 1;
+        return success(wallet.sign(secondTransaction).hash);
+      },
+    })).rejects.toThrow("already reserved");
+
+    expect(secondValidations).toBe(1);
+    expect(secondPrepares).toBe(1);
+    expect(secondSigns).toBe(0);
+    expect(secondLookups).toBe(0);
+    expect(secondBroadcasts).toBe(0);
+    const reservation = await readJson<{ userOperationHash: string }>(userOperationNonceReservationPath(
+      firstPreview.chainId,
+      firstPreview.personalAccount,
+      firstPreview.nonce,
+    ));
+    expect(reservation.userOperationHash).toBe(firstPreview.instruction.userOperationHash);
+
+    releaseFirst();
+    await first;
+  } finally {
+    releaseFirst();
+    await first?.catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 describe("durable XRPL payment state", () => {
   it("keys the app-owned recovery journal by validated XRPL source and reviewed operation", () => {
     const xrplSource = Wallet.generate().address;
@@ -181,6 +300,141 @@ describe("durable XRPL payment state", () => {
     expect(() => xrplPaymentStatePath("not-an-xrpl-address", `0x${"ab".repeat(32)}`)).toThrow(
       "preview XRPL source is not a valid classic address",
     );
+  });
+
+  it("atomically reserves the canonical chain, Personal Account, and nonce key", async () => {
+    const wallet = Wallet.generate();
+    const preview = operationPreview("SUBSCRIBE_V2", wallet.address);
+    const path = userOperationNonceReservationPath(preview.chainId, preview.personalAccount, "007");
+    expect(path).toBe(join(
+      paymentTestHome,
+      ".config",
+      "flare-standing",
+      "atomic-userop-nonce-reservations",
+      `chain-114-personal-${preview.personalAccount}-nonce-7.json`,
+    ));
+    expect((await reserveUserOperationNonce(preview)).resumed).toBe(false);
+    expect((await reserveUserOperationNonce(preview)).resumed).toBe(true);
+    await expect(reserveUserOperationNonce(withDistinctUserOperation(preview, "33"))).rejects.toThrow("already reserved");
+    await expect(access(path)).resolves.toBeUndefined();
+  });
+
+  it("rejects concurrent SUBSCRIBE/SUBSCRIBE operations at one nonce before the second XRPL signature", async () => {
+    await expectConcurrentNonceReservation("SUBSCRIBE_V2");
+  });
+
+  it("rejects concurrent SUBSCRIBE/CANCEL operations at one nonce before the cancel XRPL signature", async () => {
+    await expectConcurrentNonceReservation("CANCEL_WITHDRAW");
+  });
+
+  it("keeps the winning nonce tombstone after completion so a prepared stale operation still cannot sign", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "standing-completion-reservation-race-"));
+    const wallet = Wallet.generate();
+    const winningPreview = operationPreview("SUBSCRIBE_V2", wallet.address);
+    const stalePreview = withDistinctUserOperation(operationPreview("SUBSCRIBE_V2", wallet.address), "33");
+    const winningTransaction = preparedPayment(wallet, winningPreview);
+    const staleTransaction = preparedPayment(wallet, stalePreview);
+    const winningSigned = wallet.sign(winningTransaction);
+    let announceWinnerReserved!: () => void;
+    const winnerReserved = new Promise<void>((resolve) => {
+      announceWinnerReserved = resolve;
+    });
+    let finishWinner!: () => void;
+    const winnerMayFinish = new Promise<void>((resolve) => {
+      finishWinner = resolve;
+    });
+    let announceStalePrepared!: () => void;
+    const stalePrepared = new Promise<void>((resolve) => {
+      announceStalePrepared = resolve;
+    });
+    let continueStale!: () => void;
+    const staleMayContinue = new Promise<void>((resolve) => {
+      continueStale = resolve;
+    });
+    let staleSigns = 0;
+    let staleLookups = 0;
+    let staleBroadcasts = 0;
+    let winner: Promise<Awaited<ReturnType<typeof runDurableXrplPayment<Payment>>>> | undefined;
+    let stale: Promise<Awaited<ReturnType<typeof runDurableXrplPayment<Payment>>>> | undefined;
+
+    try {
+      winner = runDurableXrplPayment<Payment>({
+        preview: winningPreview,
+        outputBasePath: join(directory, "winner-sent.json"),
+        validateBeforeSigning: async () => undefined,
+        prepareTransaction: async () => winningTransaction,
+        signTransaction: (transaction) => wallet.sign(transaction),
+        getValidatedLedgerIndex: async () => 99,
+        lookupTransaction: async () => {
+          announceWinnerReserved();
+          await winnerMayFinish;
+          return null;
+        },
+        broadcastAndWait: async () => success(winningSigned.hash),
+      });
+      await winnerReserved;
+
+      stale = runDurableXrplPayment<Payment>({
+        preview: stalePreview,
+        outputBasePath: join(directory, "stale-sent.json"),
+        validateBeforeSigning: async () => undefined,
+        prepareTransaction: async () => staleTransaction,
+        signTransaction: (transaction) => {
+          staleSigns += 1;
+          return wallet.sign(transaction);
+        },
+        getValidatedLedgerIndex: async () => {
+          announceStalePrepared();
+          await staleMayContinue;
+          return 99;
+        },
+        lookupTransaction: async () => {
+          staleLookups += 1;
+          return null;
+        },
+        broadcastAndWait: async () => {
+          staleBroadcasts += 1;
+          return success(wallet.sign(staleTransaction).hash);
+        },
+      });
+      const staleRejection = expect(stale).rejects.toThrow("already reserved");
+      await stalePrepared;
+
+      finishWinner();
+      const completedPayment = await winner;
+      const pending = await readJson<SentAtomicSubscribe>(completedPayment.sentArtifactPath);
+      const complete = {
+        version: 1,
+        preview: pending.preview,
+        xrplTransactionHash: pending.xrplTransactionHash,
+        sentAt: pending.sentAt,
+        execution: "COMPLETE",
+        executorTransactionHash: `0x${"44".repeat(32)}`,
+        mandateId: "9",
+        completedAt: "2026-08-10T18:01:00.000Z",
+      } satisfies SentAtomicSubscribe;
+      await writePrivateJson(completedPayment.sentArtifactPath, complete);
+
+      continueStale();
+      await staleRejection;
+      expect(staleSigns).toBe(0);
+      expect(staleLookups).toBe(0);
+      expect(staleBroadcasts).toBe(0);
+      const reservationPath = userOperationNonceReservationPath(
+        winningPreview.chainId,
+        winningPreview.personalAccount,
+        winningPreview.nonce,
+      );
+      await expect(access(reservationPath)).resolves.toBeUndefined();
+      expect((await readJson<UserOperationNonceReservation>(reservationPath)).userOperationHash)
+        .toBe(winningPreview.instruction.userOperationHash);
+    } finally {
+      finishWinner();
+      continueStale();
+      await winner?.catch(() => undefined);
+      await stale?.catch(() => undefined);
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   describe.each<Operation>(["SUBSCRIBE_V2", "CANCEL_WITHDRAW"])("%s", (operation) => {
