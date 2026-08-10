@@ -32,6 +32,7 @@ type SignedPaymentState<Transaction> = Omit<PreparedPaymentState<Transaction>, "
   signedTransactionBlob: string;
   xrplTransactionHash: string;
   signedAt: string;
+  signedAfterValidatedLedger: number;
 };
 
 type ValidatedPaymentState<Transaction> = Omit<SignedPaymentState<Transaction>, "phase"> & {
@@ -66,6 +67,7 @@ type TerminalPaymentExpiry<Transaction> = {
   signedTransactionBlob: string;
   xrplTransactionHash: string;
   signedAt: string;
+  signedAfterValidatedLedger: number;
   expiredAt: string;
   expiryValidatedLedger: number;
 };
@@ -82,6 +84,21 @@ export type XrplTransactionOutcome = {
   validated: boolean;
   transactionResult?: string;
 };
+
+export type XrplLedgerSearchRange = {
+  minLedger: number;
+  maxLedger: number;
+};
+
+export type XrplTransactionAbsence = XrplLedgerSearchRange & {
+  kind: "NOT_FOUND";
+  searchedAll?: boolean;
+};
+
+export type XrplTransactionLookupResult =
+  | XrplTransactionOutcome
+  | XrplTransactionAbsence
+  | null;
 
 export type DurableXrplPaymentResult = {
   xrplTransactionHash: string;
@@ -108,7 +125,10 @@ type RunDurableXrplPaymentInput<Transaction> = {
   prepareTransaction: () => Promise<Transaction>;
   signTransaction: (transaction: Transaction) => { tx_blob: string; hash: string };
   getValidatedLedgerIndex: () => Promise<number>;
-  lookupTransaction: (hash: string) => Promise<XrplTransactionOutcome | null>;
+  lookupTransaction: (
+    hash: string,
+    range?: XrplLedgerSearchRange,
+  ) => Promise<XrplTransactionLookupResult>;
   broadcastAndWait: (signedTransactionBlob: string) => Promise<XrplTransactionOutcome>;
   now?: () => string;
 };
@@ -312,11 +332,13 @@ function assertStateIntegrity<Transaction>(
     ) {
       throw new Error("expired XRPL transaction was not proven absent beyond its LastLedgerSequence");
     }
+    signedSearchRange(expiry.signedAfterValidatedLedger, expiry.preparedTransaction);
   }
   if (state.phase === "PREPARED") return;
   const storedHash = validatedHash(state.xrplTransactionHash, "persisted XRPL transaction hash");
   const blobHash = validatedHash(hashes.hashSignedTx(state.signedTransactionBlob), "signed XRPL transaction hash");
   if (storedHash !== blobHash) throw new Error("persisted XRPL transaction hash does not match the signed transaction bytes");
+  signedSearchRange(state.signedAfterValidatedLedger, state.preparedTransaction);
   if (state.phase === "TERMINAL_FAILURE") assertTerminalResultCode(state.transactionResult);
   if (
     state.phase === "TERMINAL_EXPIRY" &&
@@ -384,6 +406,53 @@ function preparedLastLedgerSequence(transaction: unknown): number {
   return sequence as number;
 }
 
+const MAX_BOUNDED_TX_LEDGER_RANGE = 1_000;
+
+function signedSearchRange(
+  signedAfterValidatedLedger: number,
+  preparedTransaction: unknown,
+): XrplLedgerSearchRange {
+  if (!Number.isSafeInteger(signedAfterValidatedLedger) || signedAfterValidatedLedger <= 0) {
+    throw new Error("signed XRPL transaction omitted a valid pre-sign validated ledger");
+  }
+  const maxLedger = preparedLastLedgerSequence(preparedTransaction);
+  const minLedger = signedAfterValidatedLedger + 1;
+  if (!Number.isSafeInteger(minLedger) || minLedger > maxLedger) {
+    throw new Error("signed XRPL transaction has an invalid possible-inclusion ledger range");
+  }
+  if (maxLedger - minLedger + 1 > MAX_BOUNDED_TX_LEDGER_RANGE) {
+    throw new Error(
+      `signed XRPL transaction possible-inclusion range exceeds ${MAX_BOUNDED_TX_LEDGER_RANGE} ledgers`,
+    );
+  }
+  return { minLedger, maxLedger };
+}
+
+function isTransactionOutcome(
+  lookup: XrplTransactionLookupResult,
+): lookup is XrplTransactionOutcome {
+  return lookup !== null && !("kind" in lookup);
+}
+
+function assertCompleteAbsenceProof(
+  lookup: XrplTransactionLookupResult,
+  expectedRange: XrplLedgerSearchRange,
+): void {
+  if (
+    lookup === null ||
+    !("kind" in lookup) ||
+    lookup.kind !== "NOT_FOUND" ||
+    lookup.searchedAll !== true ||
+    lookup.minLedger !== expectedRange.minLedger ||
+    lookup.maxLedger !== expectedRange.maxLedger
+  ) {
+    throw new Error(
+      `XRPL history server did not prove complete absence across ledgers ` +
+        `${expectedRange.minLedger}-${expectedRange.maxLedger}`,
+    );
+  }
+}
+
 async function validatedLedgerIndex(input: Pick<RunDurableXrplPaymentInput<unknown>, "getValidatedLedgerIndex">): Promise<number> {
   const index = await input.getValidatedLedgerIndex();
   if (!Number.isSafeInteger(index) || index <= 0) {
@@ -449,12 +518,14 @@ async function runDurableXrplPaymentLocked<Transaction>(
 
   if (state.phase === "TERMINAL_EXPIRY") {
     const expiredHash = validatedHash(state.xrplTransactionHash, "persisted expired XRPL transaction hash");
-    const visibleExpiredTransaction = await input.lookupTransaction(expiredHash);
-    if (visibleExpiredTransaction !== null) {
+    const expiredRange = signedSearchRange(state.signedAfterValidatedLedger, state.preparedTransaction);
+    const expiredLookup = await input.lookupTransaction(expiredHash, expiredRange);
+    if (isTransactionOutcome(expiredLookup)) {
       throw new Error(
         `expired XRPL payment ${expiredHash} is now visible; refusing to prepare a replacement without manual reconciliation`,
       );
     }
+    assertCompleteAbsenceProof(expiredLookup, expiredRange);
     const expiredLastLedger = preparedLastLedgerSequence(state.preparedTransaction);
     const currentLedger = await validatedLedgerIndex(input);
     if (currentLedger <= expiredLastLedger) {
@@ -499,6 +570,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
           signedTransactionBlob: state.signedTransactionBlob,
           xrplTransactionHash: expiredHash,
           signedAt: state.signedAt,
+          signedAfterValidatedLedger: state.signedAfterValidatedLedger,
           expiredAt: state.expiredAt,
           expiryValidatedLedger: state.expiryValidatedLedger,
         },
@@ -511,7 +583,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
   if (state.phase === "TERMINAL_FAILURE") {
     const failedHash = validatedHash(state.xrplTransactionHash, "persisted terminal XRPL transaction hash");
     const confirmedFailure = await input.lookupTransaction(failedHash);
-    if (confirmedFailure === null) {
+    if (!isTransactionOutcome(confirmedFailure)) {
       throw new Error(`terminal XRPL payment ${failedHash} could not be revalidated; refusing to prepare a replacement`);
     }
     const confirmedResult = terminalResult(confirmedFailure, failedHash);
@@ -602,6 +674,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
     // This is the canonical cross-operation exclusion boundary. Distinct
     // SUBSCRIBE/CANCEL operations may have separate payment journals and live
     // locks, but only one hash can reserve this (chain, account, nonce) tuple.
+    signedSearchRange(currentLedger, state.preparedTransaction);
     await ensureNonceReservation();
     const signed = input.signTransaction(state.preparedTransaction);
     const signedHash = validatedHash(signed.hash, "wallet-supplied XRPL transaction hash");
@@ -613,6 +686,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
       signedTransactionBlob: signed.tx_blob,
       xrplTransactionHash: signedHash,
       signedAt: now(),
+      signedAfterValidatedLedger: currentLedger,
     };
     await writePrivateJson(statePath, signedState);
     state = signedState;
@@ -638,8 +712,45 @@ async function runDurableXrplPaymentLocked<Transaction>(
     return { xrplTransactionHash: expectedHash, statePath, sentArtifactPath, resumed };
   }
 
-  const existing = await input.lookupTransaction(expectedHash);
-  let outcome = existing;
+  const initialLookup = await input.lookupTransaction(expectedHash);
+  if (initialLookup !== null && !isTransactionOutcome(initialLookup)) {
+    throw new Error("XRPL transaction lookup returned absence evidence without a bounded ledger request");
+  }
+  let outcome: XrplTransactionOutcome | null = isTransactionOutcome(initialLookup) ? initialLookup : null;
+  if (outcome?.validated !== true) {
+    const currentLedger = await validatedLedgerIndex(input);
+    const signedLastLedger = preparedLastLedgerSequence(state.preparedTransaction);
+    if (signedLastLedger < currentLedger) {
+      if (outcome !== null) {
+        throw new Error(
+          `expired XRPL transaction ${expectedHash} remains visible but unvalidated; refusing to infer no delivery`,
+        );
+      }
+      const range = signedSearchRange(state.signedAfterValidatedLedger, state.preparedTransaction);
+      const boundedLookup = await input.lookupTransaction(expectedHash, range);
+      if (isTransactionOutcome(boundedLookup)) {
+        if (!boundedLookup.validated) {
+          throw new Error(
+            `expired XRPL transaction ${expectedHash} remains visible but unvalidated; refusing to infer no delivery`,
+          );
+        }
+        outcome = boundedLookup;
+      } else {
+        assertCompleteAbsenceProof(boundedLookup, range);
+        await writePrivateJson(statePath, {
+          ...state,
+          phase: "TERMINAL_EXPIRY",
+          expiredAt: now(),
+          expiryValidatedLedger: currentLedger,
+        } satisfies TerminalExpiredPaymentState<Transaction>);
+        throw new Error(
+          `XRPL payment ${expectedHash} was proven absent after LastLedgerSequence ${signedLastLedger}; ` +
+            "terminal no-delivery expiry recorded. Run the command again to revalidate and prepare one fresh payment",
+        );
+      }
+    }
+  }
+
   if (outcome?.validated === true) {
     if (outcome.transactionResult !== "tesSUCCESS") {
       const transactionResult = terminalResult(outcome, expectedHash);
@@ -656,25 +767,6 @@ async function runDurableXrplPaymentLocked<Transaction>(
     }
     assertSuccessfulOutcome(outcome, expectedHash);
   } else {
-    const currentLedger = await validatedLedgerIndex(input);
-    const signedLastLedger = preparedLastLedgerSequence(state.preparedTransaction);
-    if (signedLastLedger < currentLedger) {
-      if (existing !== null) {
-        throw new Error(
-          `expired XRPL transaction ${expectedHash} remains visible but unvalidated; refusing to infer no delivery`,
-        );
-      }
-      await writePrivateJson(statePath, {
-        ...state,
-        phase: "TERMINAL_EXPIRY",
-        expiredAt: now(),
-        expiryValidatedLedger: currentLedger,
-      } satisfies TerminalExpiredPaymentState<Transaction>);
-      throw new Error(
-        `XRPL payment ${expectedHash} was proven absent after LastLedgerSequence ${signedLastLedger}; ` +
-          "terminal no-delivery expiry recorded. Run the command again to revalidate and prepare one fresh payment",
-      );
-    }
     outcome = await input.broadcastAndWait(state.signedTransactionBlob);
     if (outcome.transactionResult !== "tesSUCCESS") {
       const transactionResult = terminalResult(outcome, expectedHash);

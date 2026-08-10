@@ -64,6 +64,8 @@ Transactions are signed and their deterministic hashes are written durably befor
 
 Before XRPL signing, the tool also creates a durable canonical reservation keyed by Coston2 chain id, derived Personal Account, and Smart Account nonce. The reservation binds exactly one `userOperationHash`, so a concurrent subscribe or cancel built at the same nonce fails before signing or paying XRP. Same-operation crash recovery reuses the binding. Reservations are immutable tombstones and are never removed: successful execution advances the on-chain nonce, so later valid operations use a new key, while a stale operation can never become signable after completion cleanup.
 
+The local reservation is backed by a cross-host guard. Before signing, the tool scans the XRPL account's complete validated history through an archival Clio endpoint, checks every canonical Standing payment against Coston2, pins the current XRPL account `Sequence`, then rebuilds the Coston2 preview. The prepared transaction must still carry that exact sequence at signing, so two machines cannot both validate conflicting payments. `XRPL_TESTNET_HISTORY_RPC_URL` may override the history service; it defaults to the official Testnet Clio endpoint. Missing, pruned, incomplete, or unavailable history fails closed and sends no payment.
+
 If a receipt reverts outside a live minting delay, the artifact moves to `RECOVERY_REQUIRED`. Preserve it. Flare's separately XRP-authorized `0xE0` ignore-memo path can release FXRP from a genuinely broken memo, but this executor never manufactures that user authorization automatically. An external `0xE0` recovery does not remove or bypass the immutable local nonce reservation.
 
 ## Review-first cancel and unused-FXRP withdrawal

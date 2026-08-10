@@ -19,6 +19,7 @@ import {
   xrplPaymentLockPath,
   xrplPaymentStatePath,
   type UserOperationNonceReservation,
+  type XrplLedgerSearchRange,
   type XrplPaymentState,
   type XrplTransactionOutcome,
 } from "../src/xrpl-payment-state.js";
@@ -164,6 +165,15 @@ function success(hash: string): XrplTransactionOutcome {
 
 function terminalFailure(hash: string, transactionResult = "tecUNFUNDED_PAYMENT"): XrplTransactionOutcome {
   return { hash, validated: true, transactionResult };
+}
+
+function completeAbsence(range?: XrplLedgerSearchRange) {
+  return range === undefined ? null : {
+    kind: "NOT_FOUND" as const,
+    minLedger: range.minLedger,
+    maxLedger: range.maxLedger,
+    searchedAll: true,
+  };
 }
 
 async function fixture(operation: Operation) {
@@ -469,6 +479,7 @@ describe("durable XRPL payment state", () => {
     let loserLedgerReads = 0;
     let loserLookups = 0;
     let loserBroadcasts = 0;
+    const provenRanges: XrplLedgerSearchRange[] = [];
     let winner: Promise<Awaited<ReturnType<typeof runDurableXrplPayment<Payment>>>> | undefined;
 
     try {
@@ -491,6 +502,34 @@ describe("durable XRPL payment state", () => {
         preview,
         outputBasePath,
         validateBeforeSigning: async () => {
+          throw new Error("malformed absence proof must not revalidate");
+        },
+        prepareTransaction: async () => {
+          throw new Error("malformed absence proof must not prepare");
+        },
+        signTransaction: () => {
+          throw new Error("malformed absence proof must not sign");
+        },
+        getValidatedLedgerIndex: async () => 101,
+        lookupTransaction: async (_hash, range) => range === undefined ? null : {
+          kind: "NOT_FOUND",
+          minLedger: range.minLedger - 1,
+          maxLedger: range.maxLedger,
+          searchedAll: true,
+        },
+        broadcastAndWait: async () => {
+          throw new Error("malformed absence proof must not broadcast");
+        },
+      })).rejects.toThrow("did not prove complete absence");
+      expect((await readJson<XrplPaymentState>(xrplPaymentStatePath(
+        preview.xrplSource,
+        preview.instruction.userOperationHash,
+      ))).phase).toBe("SIGNED");
+
+      await expect(runDurableXrplPayment<Payment>({
+        preview,
+        outputBasePath,
+        validateBeforeSigning: async () => {
           throw new Error("expiry discovery must not revalidate");
         },
         prepareTransaction: async () => {
@@ -500,7 +539,10 @@ describe("durable XRPL payment state", () => {
           throw new Error("expiry discovery must not sign");
         },
         getValidatedLedgerIndex: async () => 101,
-        lookupTransaction: async () => null,
+        lookupTransaction: async (_hash, range) => {
+          if (range !== undefined) provenRanges.push(range);
+          return completeAbsence(range);
+        },
         broadcastAndWait: async () => {
           throw new Error("expiry discovery must not broadcast");
         },
@@ -523,9 +565,10 @@ describe("durable XRPL payment state", () => {
           return wallet.sign(prepared);
         },
         getValidatedLedgerIndex: async () => 101,
-        lookupTransaction: async () => {
+        lookupTransaction: async (_hash, range) => {
           winnerLookups += 1;
-          return null;
+          if (range !== undefined) provenRanges.push(range);
+          return completeAbsence(range);
         },
         broadcastAndWait: async (blob) => {
           winnerBroadcasts += 1;
@@ -576,6 +619,10 @@ describe("durable XRPL payment state", () => {
       expect(recovered.xrplTransactionHash).toBe(replacementSigned.hash);
       expect([winnerValidations, winnerPrepares, winnerSigns, winnerLookups, winnerBroadcasts])
         .toEqual([1, 1, 1, 2, 1]);
+      expect(provenRanges).toEqual([
+        { minLedger: 100, maxLedger: 100 },
+        { minLedger: 100, maxLedger: 100 },
+      ]);
       const state = await readJson<XrplPaymentState<Payment>>(recovered.statePath);
       expect(state.phase).toBe("VALIDATED");
       expect(state.terminalExpiries).toHaveLength(1);
@@ -588,6 +635,134 @@ describe("durable XRPL payment state", () => {
       releasePreparation();
       await winner?.catch(() => undefined);
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reconciles a validated transaction found by the bounded history search", async () => {
+    const value = await fixture("SUBSCRIBE_V2");
+    let boundedLookups = 0;
+    let broadcasts = 0;
+    try {
+      await expect(runDurableXrplPayment<Payment>({
+        preview: value.preview,
+        outputBasePath: value.outputBasePath,
+        validateBeforeSigning: async () => undefined,
+        prepareTransaction: async () => value.transaction,
+        signTransaction: (transaction) => value.wallet.sign(transaction),
+        getValidatedLedgerIndex: async () => 99,
+        lookupTransaction: async () => {
+          throw new Error("simulated crash before broadcast");
+        },
+        broadcastAndWait: async () => {
+          throw new Error("setup must not broadcast");
+        },
+      })).rejects.toThrow("simulated crash before broadcast");
+
+      const recovered = await runDurableXrplPayment<Payment>({
+        preview: value.preview,
+        outputBasePath: value.outputBasePath,
+        validateBeforeSigning: async () => {
+          throw new Error("signed recovery must not rebuild the preview");
+        },
+        prepareTransaction: async () => {
+          throw new Error("signed recovery must not prepare another payment");
+        },
+        signTransaction: () => {
+          throw new Error("signed recovery must not sign another payment");
+        },
+        getValidatedLedgerIndex: async () => 101,
+        lookupTransaction: async (_hash, range) => {
+          if (range === undefined) return null;
+          boundedLookups += 1;
+          expect(range).toEqual({ minLedger: 100, maxLedger: 100 });
+          return success(value.signed.hash);
+        },
+        broadcastAndWait: async () => {
+          broadcasts += 1;
+          throw new Error("a history-reconciled payment must not be broadcast again");
+        },
+      });
+
+      expect(recovered.xrplTransactionHash).toBe(value.signed.hash);
+      expect(boundedLookups).toBe(1);
+      expect(broadcasts).toBe(0);
+      expect((await readJson<XrplPaymentState>(recovered.statePath)).phase).toBe("VALIDATED");
+    } finally {
+      await rm(value.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when persisted signing ledgers form a malformed search range", async () => {
+    const value = await fixture("SUBSCRIBE_V2");
+    try {
+      await expect(runDurableXrplPayment<Payment>({
+        preview: value.preview,
+        outputBasePath: value.outputBasePath,
+        validateBeforeSigning: async () => undefined,
+        prepareTransaction: async () => value.transaction,
+        signTransaction: (transaction) => value.wallet.sign(transaction),
+        getValidatedLedgerIndex: async () => 99,
+        lookupTransaction: async () => {
+          throw new Error("simulated crash before broadcast");
+        },
+        broadcastAndWait: async () => {
+          throw new Error("setup must not broadcast");
+        },
+      })).rejects.toThrow("simulated crash before broadcast");
+
+      const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
+      const signed = await readJson<XrplPaymentState<Payment>>(statePath);
+      expect(signed.phase).toBe("SIGNED");
+      await writePrivateJson(statePath, { ...signed, signedAfterValidatedLedger: 101 });
+
+      await expect(runDurableXrplPayment<Payment>({
+        preview: value.preview,
+        outputBasePath: value.outputBasePath,
+        validateBeforeSigning: async () => undefined,
+        prepareTransaction: async () => value.transaction,
+        signTransaction: (transaction) => value.wallet.sign(transaction),
+        getValidatedLedgerIndex: async () => 102,
+        lookupTransaction: async () => {
+          throw new Error("malformed state must fail before lookup");
+        },
+        broadcastAndWait: async () => {
+          throw new Error("malformed state must fail before broadcast");
+        },
+      })).rejects.toThrow("invalid possible-inclusion ledger range");
+    } finally {
+      await rm(value.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to sign when the possible XRPL history range exceeds 1000 ledgers", async () => {
+    const value = await fixture("SUBSCRIBE_V2");
+    const oversized: Payment = { ...value.transaction, LastLedgerSequence: 1_100 };
+    let signs = 0;
+    let lookups = 0;
+    let broadcasts = 0;
+    try {
+      await expect(runDurableXrplPayment<Payment>({
+        preview: value.preview,
+        outputBasePath: value.outputBasePath,
+        validateBeforeSigning: async () => undefined,
+        prepareTransaction: async () => oversized,
+        signTransaction: (transaction) => {
+          signs += 1;
+          return value.wallet.sign(transaction);
+        },
+        getValidatedLedgerIndex: async () => 99,
+        lookupTransaction: async () => {
+          lookups += 1;
+          return null;
+        },
+        broadcastAndWait: async () => {
+          broadcasts += 1;
+          return success(value.wallet.sign(oversized).hash);
+        },
+      })).rejects.toThrow("possible-inclusion range exceeds 1000 ledgers");
+      expect([signs, lookups, broadcasts]).toEqual([0, 0, 0]);
+    } finally {
+      await rm(value.directory, { recursive: true, force: true });
     }
   });
 
@@ -1019,7 +1194,7 @@ describe("durable XRPL payment state", () => {
             throw new Error("expiry discovery must not sign a replacement");
           },
           getValidatedLedgerIndex: async () => currentLedger,
-          lookupTransaction: async () => null,
+          lookupTransaction: async (_hash, range) => completeAbsence(range),
           broadcastAndWait: async () => {
             throw new Error("expired signed bytes must not be rebroadcast");
           },
@@ -1048,7 +1223,7 @@ describe("durable XRPL payment state", () => {
             return value.wallet.sign(transaction);
           },
           getValidatedLedgerIndex: async () => currentLedger,
-          lookupTransaction: async () => null,
+          lookupTransaction: async (_hash, range) => completeAbsence(range),
           broadcastAndWait: async (blob) => {
             broadcasts += 1;
             expect(blob).toBe(replacementSigned.tx_blob);

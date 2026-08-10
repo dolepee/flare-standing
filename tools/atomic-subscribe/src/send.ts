@@ -9,8 +9,17 @@ import type { AtomicSubscribePreview } from "./preflight.js";
 import { buildAtomicSubscribePreview } from "./preflight.js";
 import {
   runDurableXrplPayment,
+  type XrplLedgerSearchRange,
   type XrplTransactionOutcome,
 } from "./xrpl-payment-state.js";
+import { transactionNotFoundResult } from "./xrpl-history.js";
+import {
+  assertNoUnresolvedGlobalXrplPayment,
+  assertPreparedTransactionSequence,
+  createCostonTransactionIdUsageReader,
+  type GlobalXrplPaymentSnapshot,
+  type XrplHistoryClient,
+} from "./global-xrpl-payment-guard.js";
 
 function transactionOutcome(response: unknown): XrplTransactionOutcome {
   const result = (response as {
@@ -26,15 +35,6 @@ function transactionOutcome(response: unknown): XrplTransactionOutcome {
     validated: result.validated === true,
     ...(typeof transactionResult === "string" ? { transactionResult } : {}),
   };
-}
-
-function isTransactionNotFound(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "data" in error &&
-    (error as { data?: { error?: unknown } }).data?.error === "txnNotFound"
-  );
 }
 
 const requiredConfirmation = "APPROVE STANDING ATOMIC XRPL SUBSCRIPTION";
@@ -55,12 +55,26 @@ if (wallet.address !== preview.xrplSource) {
 }
 
 const client = new Client(process.env.XRPL_TESTNET_RPC_URL ?? "wss://s.altnet.rippletest.net:51233");
+const historyClient = new Client(
+  process.env.XRPL_TESTNET_HISTORY_RPC_URL ?? "wss://clio.altnet.rippletest.net:51233",
+);
+const guardedHistoryClient: XrplHistoryClient = {
+  request: (request) => historyClient.request(request as never),
+};
+const isTransactionIdUsed = createCostonTransactionIdUsageReader();
+let globalPaymentSnapshot: GlobalXrplPaymentSnapshot | undefined;
 await client.connect();
 try {
   const durable = await runDurableXrplPayment<Payment>({
     preview,
     outputBasePath,
     validateBeforeSigning: async () => {
+      if (!historyClient.isConnected()) await historyClient.connect();
+      globalPaymentSnapshot = await assertNoUnresolvedGlobalXrplPayment({
+        historyClient: guardedHistoryClient,
+        preview,
+        isTransactionIdUsed,
+      });
       const fresh = await buildAtomicSubscribePreview({
         xrplAddress: preview.xrplSource,
         planId: BigInt(preview.plan.id),
@@ -79,24 +93,40 @@ try {
       }
     },
     prepareTransaction: async () => {
+      if (globalPaymentSnapshot === undefined) {
+        throw new Error("global XRPL payment guard did not produce a sequence snapshot");
+      }
       const transaction = await client.autofill({
         TransactionType: "Payment",
         Account: wallet.address,
         Destination: preview.xrplDestination,
         Amount: preview.payment.totalPaymentUBA,
         Memos: [{ Memo: { MemoData: preview.instruction.memoData.slice(2) } }],
+        Sequence: globalPaymentSnapshot.sequence,
       });
       if ("DestinationTag" in transaction) throw new Error("autofilled transaction unexpectedly contains DestinationTag");
+      assertPreparedTransactionSequence(transaction, globalPaymentSnapshot);
       return transaction;
     },
-    signTransaction: (transaction) => wallet.sign(transaction),
+    signTransaction: (transaction) => {
+      assertPreparedTransactionSequence(transaction, globalPaymentSnapshot);
+      return wallet.sign(transaction);
+    },
     getValidatedLedgerIndex: () => client.getLedgerIndex(),
-    lookupTransaction: async (hash) => {
+    lookupTransaction: async (hash, range?: XrplLedgerSearchRange) => {
+      const lookupClient = range === undefined ? client : historyClient;
+      if (!lookupClient.isConnected()) await lookupClient.connect();
       try {
-        return transactionOutcome(await client.request({ command: "tx", transaction: hash }));
+        return transactionOutcome(await lookupClient.request({
+          command: "tx",
+          transaction: hash,
+          ...(range === undefined ? {} : {
+            min_ledger: range.minLedger,
+            max_ledger: range.maxLedger,
+          }),
+        }));
       } catch (error) {
-        if (isTransactionNotFound(error)) return null;
-        throw error;
+        return transactionNotFoundResult(error, range);
       }
     },
     broadcastAndWait: async (blob) => transactionOutcome(await client.submitAndWait(blob)),
@@ -105,5 +135,6 @@ try {
   console.log(`Payment recovery journal: ${durable.statePath}`);
   console.log(`Executor artifact written to ${durable.sentArtifactPath}`);
 } finally {
+  if (historyClient.isConnected()) await historyClient.disconnect();
   await client.disconnect();
 }
