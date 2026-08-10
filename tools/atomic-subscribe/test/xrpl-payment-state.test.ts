@@ -437,6 +437,160 @@ describe("durable XRPL payment state", () => {
     }
   });
 
+  it("serializes explicit recovery from terminal no-delivery expiry", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "standing-expired-payment-recovery-race-"));
+    const wallet = Wallet.generate();
+    const preview = operationPreview("SUBSCRIBE_V2", wallet.address);
+    const transaction = preparedPayment(wallet, preview);
+    const signed = wallet.sign(transaction);
+    const replacementTransaction: Payment = {
+      ...transaction,
+      Fee: "13",
+      LastLedgerSequence: 200,
+    };
+    const replacementSigned = wallet.sign(replacementTransaction);
+    const outputBasePath = join(directory, "sent.json");
+    let announcePreparation!: () => void;
+    const preparationStarted = new Promise<void>((resolve) => {
+      announcePreparation = resolve;
+    });
+    let releasePreparation!: () => void;
+    const preparationMayFinish = new Promise<void>((resolve) => {
+      releasePreparation = resolve;
+    });
+    let winnerValidations = 0;
+    let winnerPrepares = 0;
+    let winnerSigns = 0;
+    let winnerLookups = 0;
+    let winnerBroadcasts = 0;
+    let loserValidations = 0;
+    let loserPrepares = 0;
+    let loserSigns = 0;
+    let loserLedgerReads = 0;
+    let loserLookups = 0;
+    let loserBroadcasts = 0;
+    let winner: Promise<Awaited<ReturnType<typeof runDurableXrplPayment<Payment>>>> | undefined;
+
+    try {
+      await expect(runDurableXrplPayment<Payment>({
+        preview,
+        outputBasePath,
+        validateBeforeSigning: async () => undefined,
+        prepareTransaction: async () => transaction,
+        signTransaction: (prepared) => wallet.sign(prepared),
+        getValidatedLedgerIndex: async () => 99,
+        lookupTransaction: async () => {
+          throw new Error("simulated crash before broadcast");
+        },
+        broadcastAndWait: async () => {
+          throw new Error("setup must not broadcast");
+        },
+      })).rejects.toThrow("simulated crash before broadcast");
+
+      await expect(runDurableXrplPayment<Payment>({
+        preview,
+        outputBasePath,
+        validateBeforeSigning: async () => {
+          throw new Error("expiry discovery must not revalidate");
+        },
+        prepareTransaction: async () => {
+          throw new Error("expiry discovery must not prepare");
+        },
+        signTransaction: () => {
+          throw new Error("expiry discovery must not sign");
+        },
+        getValidatedLedgerIndex: async () => 101,
+        lookupTransaction: async () => null,
+        broadcastAndWait: async () => {
+          throw new Error("expiry discovery must not broadcast");
+        },
+      })).rejects.toThrow("terminal no-delivery expiry recorded");
+
+      winner = runDurableXrplPayment<Payment>({
+        preview,
+        outputBasePath,
+        validateBeforeSigning: async () => {
+          winnerValidations += 1;
+        },
+        prepareTransaction: async () => {
+          winnerPrepares += 1;
+          announcePreparation();
+          await preparationMayFinish;
+          return replacementTransaction;
+        },
+        signTransaction: (prepared) => {
+          winnerSigns += 1;
+          return wallet.sign(prepared);
+        },
+        getValidatedLedgerIndex: async () => 101,
+        lookupTransaction: async () => {
+          winnerLookups += 1;
+          return null;
+        },
+        broadcastAndWait: async (blob) => {
+          winnerBroadcasts += 1;
+          expect(blob).toBe(replacementSigned.tx_blob);
+          return success(replacementSigned.hash);
+        },
+      });
+      await preparationStarted;
+
+      await expect(runDurableXrplPayment<Payment>({
+        preview,
+        outputBasePath: join(directory, "loser-sent.json"),
+        validateBeforeSigning: async () => {
+          loserValidations += 1;
+        },
+        prepareTransaction: async () => {
+          loserPrepares += 1;
+          return replacementTransaction;
+        },
+        signTransaction: (prepared) => {
+          loserSigns += 1;
+          return wallet.sign(prepared);
+        },
+        getValidatedLedgerIndex: async () => {
+          loserLedgerReads += 1;
+          return 101;
+        },
+        lookupTransaction: async () => {
+          loserLookups += 1;
+          return null;
+        },
+        broadcastAndWait: async () => {
+          loserBroadcasts += 1;
+          return success(replacementSigned.hash);
+        },
+      })).rejects.toThrow("XRPL payment state is already locked");
+      expect([
+        loserValidations,
+        loserPrepares,
+        loserSigns,
+        loserLedgerReads,
+        loserLookups,
+        loserBroadcasts,
+      ]).toEqual([0, 0, 0, 0, 0, 0]);
+
+      releasePreparation();
+      const recovered = await winner;
+      expect(recovered.xrplTransactionHash).toBe(replacementSigned.hash);
+      expect([winnerValidations, winnerPrepares, winnerSigns, winnerLookups, winnerBroadcasts])
+        .toEqual([1, 1, 1, 2, 1]);
+      const state = await readJson<XrplPaymentState<Payment>>(recovered.statePath);
+      expect(state.phase).toBe("VALIDATED");
+      expect(state.terminalExpiries).toHaveLength(1);
+      await expect(access(userOperationNonceReservationPath(
+        preview.chainId,
+        preview.personalAccount,
+        preview.nonce,
+      ))).resolves.toBeUndefined();
+    } finally {
+      releasePreparation();
+      await winner?.catch(() => undefined);
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   describe.each<Operation>(["SUBSCRIBE_V2", "CANCEL_WITHDRAW"])("%s", (operation) => {
     it("persists PREPARED before signing and deterministically resumes a crash during signing", async () => {
       const value = await fixture(operation);
@@ -787,55 +941,140 @@ describe("durable XRPL payment state", () => {
       }
     });
 
-    it("preserves an expired SIGNED transaction and refuses to replace or rebroadcast it", async () => {
+    it("journals exact-hash no-delivery expiry before explicitly preparing a fresh same-operation payment", async () => {
       const value = await fixture(operation);
+      const replacementTransaction: Payment = {
+        ...value.transaction,
+        Fee: "13",
+        LastLedgerSequence: 200,
+      };
+      const replacementSigned = value.wallet.sign(replacementTransaction);
+      let validations = 0;
       let prepares = 0;
       let signs = 0;
       let currentLedger = 99;
-      let crashBeforeBroadcast = true;
       let broadcasts = 0;
       try {
-        const run = () =>
-          runDurableXrplPayment<Payment>({
-            preview: value.preview,
-            outputBasePath: value.outputBasePath,
-            validateBeforeSigning: async () => undefined,
-            prepareTransaction: async () => {
-              prepares += 1;
-              return value.transaction;
-            },
-            signTransaction: (transaction) => {
-              signs += 1;
-              return value.wallet.sign(transaction);
-            },
-            getValidatedLedgerIndex: async () => currentLedger,
-            lookupTransaction: async () => {
-              if (crashBeforeBroadcast) throw new Error("simulated crash before broadcast");
-              return null;
-            },
-            broadcastAndWait: async () => {
-              broadcasts += 1;
-              throw new Error("expired signed bytes must not be rebroadcast");
-            },
-          });
-
-        await expect(run()).rejects.toThrow("simulated crash before broadcast");
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => {
+            validations += 1;
+          },
+          prepareTransaction: async () => {
+            prepares += 1;
+            return value.transaction;
+          },
+          signTransaction: (transaction) => {
+            signs += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => currentLedger,
+          lookupTransaction: async () => {
+            throw new Error("simulated crash before broadcast");
+          },
+          broadcastAndWait: async () => {
+            throw new Error("must not broadcast during setup");
+          },
+        })).rejects.toThrow("simulated crash before broadcast");
         const statePath = xrplPaymentStatePath(value.preview.xrplSource, value.preview.instruction.userOperationHash);
-        const signedBeforeExpiry = await readJson<XrplPaymentState<Payment>>(statePath);
-        expect(signedBeforeExpiry.phase).toBe("SIGNED");
-        if (signedBeforeExpiry.phase === "SIGNED") {
-          expect(signedBeforeExpiry.signedTransactionBlob).toBe(value.signed.tx_blob);
+        expect((await readJson<XrplPaymentState<Payment>>(statePath)).phase).toBe("SIGNED");
+
+        // LastLedgerSequence itself is not enough: only a validated ledger
+        // strictly beyond it proves the exact absent hash can no longer land.
+        currentLedger = 100;
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => {
+            throw new Error("live signed retry must not revalidate");
+          },
+          prepareTransaction: async () => {
+            throw new Error("live signed retry must not prepare");
+          },
+          signTransaction: () => {
+            throw new Error("live signed retry must not sign");
+          },
+          getValidatedLedgerIndex: async () => currentLedger,
+          lookupTransaction: async () => null,
+          broadcastAndWait: async (blob) => {
+            broadcasts += 1;
+            expect(blob).toBe(value.signed.tx_blob);
+            throw new Error("simulated disconnect at LastLedgerSequence");
+          },
+        })).rejects.toThrow("simulated disconnect at LastLedgerSequence");
+        expect((await readJson<XrplPaymentState<Payment>>(statePath)).phase).toBe("SIGNED");
+
+        currentLedger = 101;
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => {
+            throw new Error("expiry discovery must not revalidate or replace in the same invocation");
+          },
+          prepareTransaction: async () => {
+            throw new Error("expiry discovery must not prepare a replacement");
+          },
+          signTransaction: () => {
+            throw new Error("expiry discovery must not sign a replacement");
+          },
+          getValidatedLedgerIndex: async () => currentLedger,
+          lookupTransaction: async () => null,
+          broadcastAndWait: async () => {
+            throw new Error("expired signed bytes must not be rebroadcast");
+          },
+        })).rejects.toThrow("terminal no-delivery expiry recorded");
+
+        const expired = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(expired.phase).toBe("TERMINAL_EXPIRY");
+        if (expired.phase === "TERMINAL_EXPIRY") {
+          expect(expired.xrplTransactionHash).toBe(value.signed.hash);
+          expect(expired.signedTransactionBlob).toBe(value.signed.tx_blob);
+          expect(expired.expiryValidatedLedger).toBe(101);
         }
 
-        crashBeforeBroadcast = false;
-        currentLedger = 101;
-        await expect(run()).rejects.toThrow(/persisted SIGNED XRPL transaction .* expired at ledger 100/);
+        const recovered = await runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: join(value.directory, "alternate-sent.json"),
+          validateBeforeSigning: async () => {
+            validations += 1;
+          },
+          prepareTransaction: async () => {
+            prepares += 1;
+            return replacementTransaction;
+          },
+          signTransaction: (transaction) => {
+            signs += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => currentLedger,
+          lookupTransaction: async () => null,
+          broadcastAndWait: async (blob) => {
+            broadcasts += 1;
+            expect(blob).toBe(replacementSigned.tx_blob);
+            return success(replacementSigned.hash);
+          },
+        });
 
-        const signedAfterExpiry = await readJson<XrplPaymentState<Payment>>(statePath);
-        expect(signedAfterExpiry).toEqual(signedBeforeExpiry);
-        expect(prepares).toBe(1);
-        expect(signs).toBe(1);
-        expect(broadcasts).toBe(0);
+        expect(recovered.xrplTransactionHash).toBe(replacementSigned.hash);
+        expect(recovered.sentArtifactPath).toBe(transactionArtifactPath(value.outputBasePath, replacementSigned.hash));
+        expect(validations).toBe(2);
+        expect(prepares).toBe(2);
+        expect(signs).toBe(2);
+        expect(broadcasts).toBe(2);
+        const completed = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(completed.phase).toBe("VALIDATED");
+        expect(completed.terminalExpiries).toHaveLength(1);
+        expect(completed.terminalExpiries?.[0]).toMatchObject({
+          xrplTransactionHash: value.signed.hash,
+          expiryValidatedLedger: 101,
+          preparedTransaction: { Sequence: 1, LastLedgerSequence: 100 },
+        });
+        await expect(access(userOperationNonceReservationPath(
+          value.preview.chainId,
+          value.preview.personalAccount,
+          value.preview.nonce,
+        ))).resolves.toBeUndefined();
       } finally {
         await rm(value.directory, { recursive: true, force: true });
       }

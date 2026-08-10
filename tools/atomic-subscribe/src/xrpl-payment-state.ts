@@ -24,6 +24,7 @@ type PreparedPaymentState<Transaction> = {
   preparedTransaction: Transaction;
   preparedAt: string;
   terminalFailures?: TerminalPaymentFailure<Transaction>[];
+  terminalExpiries?: TerminalPaymentExpiry<Transaction>[];
 };
 
 type SignedPaymentState<Transaction> = Omit<PreparedPaymentState<Transaction>, "phase"> & {
@@ -45,6 +46,12 @@ type TerminalFailedPaymentState<Transaction> = Omit<SignedPaymentState<Transacti
   transactionResult: string;
 };
 
+type TerminalExpiredPaymentState<Transaction> = Omit<SignedPaymentState<Transaction>, "phase"> & {
+  phase: "TERMINAL_EXPIRY";
+  expiredAt: string;
+  expiryValidatedLedger: number;
+};
+
 type TerminalPaymentFailure<Transaction> = {
   preparedTransaction: Transaction;
   signedTransactionBlob: string;
@@ -54,10 +61,20 @@ type TerminalPaymentFailure<Transaction> = {
   transactionResult: string;
 };
 
+type TerminalPaymentExpiry<Transaction> = {
+  preparedTransaction: Transaction;
+  signedTransactionBlob: string;
+  xrplTransactionHash: string;
+  signedAt: string;
+  expiredAt: string;
+  expiryValidatedLedger: number;
+};
+
 export type XrplPaymentState<Transaction = unknown> =
   | PreparedPaymentState<Transaction>
   | SignedPaymentState<Transaction>
   | TerminalFailedPaymentState<Transaction>
+  | TerminalExpiredPaymentState<Transaction>
   | ValidatedPaymentState<Transaction>;
 
 export type XrplTransactionOutcome = {
@@ -283,11 +300,31 @@ function assertStateIntegrity<Transaction>(
     }
     assertTerminalResultCode(failure.transactionResult);
   }
+  for (const expiry of state.terminalExpiries ?? []) {
+    const expiryHash = validatedHash(expiry.xrplTransactionHash, "expired XRPL transaction hash");
+    const blobHash = validatedHash(hashes.hashSignedTx(expiry.signedTransactionBlob), "expired signed XRPL transaction hash");
+    if (expiryHash !== blobHash) {
+      throw new Error("expired XRPL transaction hash does not match the signed transaction bytes");
+    }
+    if (
+      !Number.isSafeInteger(expiry.expiryValidatedLedger) ||
+      expiry.expiryValidatedLedger <= preparedLastLedgerSequence(expiry.preparedTransaction)
+    ) {
+      throw new Error("expired XRPL transaction was not proven absent beyond its LastLedgerSequence");
+    }
+  }
   if (state.phase === "PREPARED") return;
   const storedHash = validatedHash(state.xrplTransactionHash, "persisted XRPL transaction hash");
   const blobHash = validatedHash(hashes.hashSignedTx(state.signedTransactionBlob), "signed XRPL transaction hash");
   if (storedHash !== blobHash) throw new Error("persisted XRPL transaction hash does not match the signed transaction bytes");
   if (state.phase === "TERMINAL_FAILURE") assertTerminalResultCode(state.transactionResult);
+  if (
+    state.phase === "TERMINAL_EXPIRY" &&
+    (!Number.isSafeInteger(state.expiryValidatedLedger) ||
+      state.expiryValidatedLedger <= preparedLastLedgerSequence(state.preparedTransaction))
+  ) {
+    throw new Error("terminal XRPL expiry was not proven absent beyond its LastLedgerSequence");
+  }
 }
 
 function assertOutcomeIdentity(outcome: XrplTransactionOutcome, expectedHash: string): void {
@@ -410,6 +447,67 @@ async function runDurableXrplPaymentLocked<Transaction>(
   // boundary. Recreate or verify their binding before any reconciliation.
   if (state.phase !== "PREPARED") await ensureNonceReservation();
 
+  if (state.phase === "TERMINAL_EXPIRY") {
+    const expiredHash = validatedHash(state.xrplTransactionHash, "persisted expired XRPL transaction hash");
+    const visibleExpiredTransaction = await input.lookupTransaction(expiredHash);
+    if (visibleExpiredTransaction !== null) {
+      throw new Error(
+        `expired XRPL payment ${expiredHash} is now visible; refusing to prepare a replacement without manual reconciliation`,
+      );
+    }
+    const expiredLastLedger = preparedLastLedgerSequence(state.preparedTransaction);
+    const currentLedger = await validatedLedgerIndex(input);
+    if (currentLedger <= expiredLastLedger) {
+      throw new Error(
+        `cannot re-prove expired XRPL payment ${expiredHash} absent: validated ledger ${currentLedger} ` +
+          `is not beyond LastLedgerSequence ${expiredLastLedger}`,
+      );
+    }
+
+    // Discovery and replacement deliberately require separate invocations. A
+    // fresh operator run must prove the exact signed hash absent again beyond
+    // LastLedgerSequence, then repeat every live check before autofill/signing.
+    await input.validateBeforeSigning();
+    validatedBeforeSigning = true;
+    const replacementTransaction = await input.prepareTransaction();
+    const expiredSequence = preparedSequence(state.preparedTransaction);
+    const replacementSequence = preparedSequence(replacementTransaction);
+    if (replacementSequence < expiredSequence) {
+      throw new Error(
+        `replacement XRPL transaction sequence ${replacementSequence} is before expired sequence ${expiredSequence}`,
+      );
+    }
+    const replacementLastLedger = preparedLastLedgerSequence(replacementTransaction);
+    if (replacementLastLedger <= currentLedger) {
+      throw new Error(
+        `replacement XRPL transaction expires at ledger ${replacementLastLedger}, not after validated ledger ${currentLedger}`,
+      );
+    }
+
+    const replacementState: PreparedPaymentState<Transaction> = {
+      version: 1,
+      phase: "PREPARED",
+      preview: state.preview,
+      sentArtifactBasePath: state.sentArtifactBasePath,
+      preparedTransaction: replacementTransaction,
+      preparedAt: now(),
+      ...(state.terminalFailures === undefined ? {} : { terminalFailures: state.terminalFailures }),
+      terminalExpiries: [
+        ...(state.terminalExpiries ?? []),
+        {
+          preparedTransaction: state.preparedTransaction,
+          signedTransactionBlob: state.signedTransactionBlob,
+          xrplTransactionHash: expiredHash,
+          signedAt: state.signedAt,
+          expiredAt: state.expiredAt,
+          expiryValidatedLedger: state.expiryValidatedLedger,
+        },
+      ],
+    };
+    await writePrivateJson(statePath, replacementState);
+    state = replacementState;
+  }
+
   if (state.phase === "TERMINAL_FAILURE") {
     const failedHash = validatedHash(state.xrplTransactionHash, "persisted terminal XRPL transaction hash");
     const confirmedFailure = await input.lookupTransaction(failedHash);
@@ -461,6 +559,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
           transactionResult: state.transactionResult,
         },
       ],
+      ...(state.terminalExpiries === undefined ? {} : { terminalExpiries: state.terminalExpiries }),
     };
     await writePrivateJson(statePath, replacementState);
     state = replacementState;
@@ -494,6 +593,7 @@ async function runDurableXrplPaymentLocked<Transaction>(
         preparedTransaction: replacementTransaction,
         preparedAt: now(),
         ...(state.terminalFailures === undefined ? {} : { terminalFailures: state.terminalFailures }),
+        ...(state.terminalExpiries === undefined ? {} : { terminalExpiries: state.terminalExpiries }),
       };
       await writePrivateJson(statePath, replacementState);
       state = replacementState;
@@ -558,10 +658,21 @@ async function runDurableXrplPaymentLocked<Transaction>(
   } else {
     const currentLedger = await validatedLedgerIndex(input);
     const signedLastLedger = preparedLastLedgerSequence(state.preparedTransaction);
-    if (signedLastLedger <= currentLedger) {
+    if (signedLastLedger < currentLedger) {
+      if (existing !== null) {
+        throw new Error(
+          `expired XRPL transaction ${expectedHash} remains visible but unvalidated; refusing to infer no delivery`,
+        );
+      }
+      await writePrivateJson(statePath, {
+        ...state,
+        phase: "TERMINAL_EXPIRY",
+        expiredAt: now(),
+        expiryValidatedLedger: currentLedger,
+      } satisfies TerminalExpiredPaymentState<Transaction>);
       throw new Error(
-        `persisted SIGNED XRPL transaction ${expectedHash} expired at ledger ${signedLastLedger}; ` +
-          "the signed bytes were preserved and must not be replaced without explicit payment reconciliation",
+        `XRPL payment ${expectedHash} was proven absent after LastLedgerSequence ${signedLastLedger}; ` +
+          "terminal no-delivery expiry recorded. Run the command again to revalidate and prepare one fresh payment",
       );
     }
     outcome = await input.broadcastAndWait(state.signedTransactionBlob);
