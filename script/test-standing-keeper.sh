@@ -3,6 +3,7 @@ set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 temp_dir="$(mktemp -d)"
+standing_address="0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7"
 trap 'rm -rf "$temp_dir"' EXIT
 
 ln -s "$root_dir/test/fixtures/fake-cast.sh" "$temp_dir/cast"
@@ -16,6 +17,7 @@ run_case() {
   local log_path="$temp_dir/$name.jsonl"
 
   PATH="$temp_dir:$PATH" \
+    STANDING_ADDRESS="$standing_address" \
     RUN_LIVE="$run_live" \
     KEEPER_PRIVATE_KEY="0xkeeper-test-key" \
     KEEPER_LOG_PATH="$log_path" \
@@ -35,6 +37,7 @@ run_case live-execute 1 2000000 executed charge_executed
 stale_log="$temp_dir/stale-lock.jsonl"
 printf '2147483647\n' >"${stale_log}.lock"
 PATH="$temp_dir:$PATH" \
+  STANDING_ADDRESS="$standing_address" \
   KEEPER_LOG_PATH="$stale_log" \
   FAKE_REMAINING=2000000 \
   FAKE_RECEIPT_EVENT=executed \
@@ -44,6 +47,7 @@ jq -e 'select(.event == "scan_complete")' "$stale_log" >/dev/null
 crash_log="$temp_dir/crash-release.jsonl"
 crash_marker="$temp_dir/crash-child-started"
 PATH="$temp_dir:$PATH" \
+  STANDING_ADDRESS="$standing_address" \
   KEEPER_LOG_PATH="$crash_log" \
   FAKE_REMAINING=2000000 \
   FAKE_RECEIPT_EVENT=executed \
@@ -63,6 +67,7 @@ kill -9 "$keeper_pid"
 wait "$keeper_pid" 2>/dev/null || true
 
 PATH="$temp_dir:$PATH" \
+  STANDING_ADDRESS="$standing_address" \
   KEEPER_LOG_PATH="$crash_log" \
   FAKE_REMAINING=2000000 \
   FAKE_RECEIPT_EVENT=executed \

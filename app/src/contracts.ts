@@ -1,6 +1,7 @@
 import { parseAbi } from 'viem'
 
 export const standingAbi = parseAbi([
+  'function standingIdentity() pure returns (uint256 version, bytes32 capability)',
   'function planCount() view returns (uint256)',
   'function mandateCount() view returns (uint256)',
   'function paused() view returns (bool)',
@@ -14,7 +15,7 @@ export const standingAbi = parseAbi([
   'function mandates(uint256) view returns (uint256 planId, address subscriber, uint256 deposited, uint256 remaining, uint256 nextChargeAt, uint256 lastChargeAt, bool canceled)',
   'function createPlan(uint256 priceUsdMicro, uint256 priceFxrp, uint32 periodSeconds, address merchant) returns (uint256)',
   'function setPlanActive(uint256 planId, bool active)',
-  'function openMandate(uint256 planId, uint256 depositAmount)',
+  'function openMandateAndCharge(uint256 planId, uint256 depositAmount, uint256 maxInitialChargeFxrp)',
   'function topUp(uint256 mandateId, uint256 amount)',
   'function cancel(uint256 mandateId)',
   'function charge(uint256 mandateId)',
@@ -25,7 +26,7 @@ export const standingAbi = parseAbi([
   'event MandateOpened(uint256 indexed mandateId, uint256 indexed planId, address indexed subscriber, uint256 deposited, uint256 firstChargeAt)',
   'event MandateTopUp(uint256 indexed mandateId, address indexed subscriber, uint256 amount)',
   'event MandateCanceled(uint256 indexed mandateId, address indexed subscriber)',
-  'event ChargeExecuted(uint256 indexed mandateId, address indexed merchant, uint256 amount, uint256 fee, uint256 nextChargeAt)',
+  'event ChargeExecuted(uint256 indexed mandateId, address indexed merchant, uint256 merchantAmount, uint256 feeAmount, uint256 nextChargeAt)',
   'event ChargeBlocked(uint256 indexed mandateId, uint256 remaining, uint256 expected)',
   'event MerchantWithdraw(address indexed merchant, uint256 amount)',
   'event ProtocolWithdraw(address indexed treasury, uint256 amount)',
@@ -40,6 +41,17 @@ export const erc20Abi = parseAbi([
   'function approve(address,uint256) returns (bool)',
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
+])
+
+// Intentionally excludes every legacy acquisition, keeper, and merchant write.
+// This ABI is the recovery lane's second line of defense after UI ownership gates.
+export const historicalV1RecoveryAbi = parseAbi([
+  'function planCount() view returns (uint256)',
+  'function mandateCount() view returns (uint256)',
+  'function plans(uint256) view returns (address merchant, uint256 priceUsdMicro, uint256 priceFxrp, uint32 periodSeconds, bool active)',
+  'function mandates(uint256) view returns (uint256 planId, address subscriber, uint256 deposited, uint256 remaining, uint256 nextChargeAt, uint256 lastChargeAt, bool canceled)',
+  'function cancel(uint256 mandateId)',
+  'function withdrawMandate(uint256 mandateId)',
 ])
 
 export type StandingPlan = {

@@ -2,13 +2,15 @@ import { ArrowLeft, Check, ShieldCheck, WalletCards } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { decodeEventLog } from 'viem'
+import { Coston2Setup } from '../components/Coston2Setup'
 import { Status } from '../components/Status'
 import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import { erc20Abi, standingAbi } from '../contracts'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
 import { publicClient } from '../lib/chain'
-import { formatFxrp, formatPeriod, formatUsdMicro, parseFxrp, runUiAction, shortAddress } from '../lib/format'
+import { selectInitialChargeCeiling } from '../lib/checkout'
+import { errorMessage, formatFxrp, formatPeriod, formatUsdMicro, parseFxrp, runUiAction, shortAddress } from '../lib/format'
 import { getPlanProfile } from '../lib/planCatalog'
 
 export function CheckoutPage() {
@@ -17,6 +19,7 @@ export function CheckoutPage() {
   const { account, connected, correctChain, connect, switchToCoston2, execute } = useWallet()
   const { state, loading, initialized, error, refresh } = useProtocol()
   const [deposit, setDeposit] = useState('3')
+  const [reviewedMaxInitialCharge, setReviewedMaxInitialCharge] = useState('')
   const plan = state.plans.find((candidate) => candidate.id.toString() === planId)
   const profile = getPlanProfile(plan)
   const amount = useMemo(() => {
@@ -26,9 +29,27 @@ export function CheckoutPage() {
       return 0n
     }
   }, [deposit])
+  const reviewedCeiling = useMemo(() => {
+    try {
+      return parseFxrp(reviewedMaxInitialCharge)
+    } catch {
+      return 0n
+    }
+  }, [reviewedMaxInitialCharge])
+  const initialChargeSelection = useMemo(() => {
+    if (!plan) return { ceiling: 0n, error: undefined }
+    try {
+      return {
+        ceiling: selectInitialChargeCeiling(plan, amount, plan.priceUsdMicro > 0n ? reviewedCeiling : undefined),
+        error: undefined,
+      }
+    } catch (selectionError) {
+      return { ceiling: 0n, error: errorMessage(selectionError) }
+    }
+  }, [amount, plan, reviewedCeiling])
 
   async function subscribe() {
-    if (!plan || amount <= 0n) return
+    if (!plan || amount <= 0n || initialChargeSelection.error || initialChargeSelection.ceiling <= 0n) return
     if (state.walletAllowance < amount) {
       await execute({
         label: `Approve ${deposit} FTestXRP`,
@@ -39,24 +60,29 @@ export function CheckoutPage() {
       })
     }
     const hash = await execute({
-      label: `Open mandate for ${profile.name}`,
+      label: `Open and charge ${profile.name}`,
       address: STANDING_ADDRESS,
       abi: standingAbi,
-      functionName: 'openMandate',
-      args: [plan.id, amount],
+      functionName: 'openMandateAndCharge',
+      args: [plan.id, amount, initialChargeSelection.ceiling],
     })
     const receipt = await publicClient.getTransactionReceipt({ hash })
-    const openedLog = receipt.logs.flatMap((log) => {
+    const decodedLogs = receipt.logs.flatMap((log) => {
       try {
-        const decoded = decodeEventLog({ abi: standingAbi, data: log.data, topics: log.topics })
-        return decoded.eventName === 'MandateOpened' ? [decoded] : []
+        return [decodeEventLog({ abi: standingAbi, data: log.data, topics: log.topics })]
       } catch {
         return []
       }
-    })[0]
-    await refresh()
+    })
+    const openedLog = decodedLogs.find((log) => log.eventName === 'MandateOpened')
+    const chargedLog = decodedLogs.find((log) => log.eventName === 'ChargeExecuted')
     const openedId = openedLog?.args && 'mandateId' in openedLog.args ? openedLog.args.mandateId : undefined
-    navigate(openedId ? `/access/${openedId.toString()}` : '/mandates')
+    const chargedId = chargedLog?.args && 'mandateId' in chargedLog.args ? chargedLog.args.mandateId : undefined
+    if (openedId === undefined || chargedId !== openedId) {
+      throw new Error('V2 checkout receipt did not bind MandateOpened and ChargeExecuted')
+    }
+    await refresh()
+    navigate(`/access/${openedId.toString()}`)
   }
 
   if (!initialized && loading) {
@@ -65,11 +91,14 @@ export function CheckoutPage() {
 
   if (error) {
     return (
-      <div className="page route-failure" role="alert">
-        <ShieldCheck aria-hidden="true" />
-        <h1>Coston2 data is temporarily unavailable.</h1>
-        <p>The checkout has not classified this plan. Retry the onchain read before continuing.</p>
-        <button className="button button-secondary" type="button" onClick={() => runUiAction(refresh())}>Retry plan read</button>
+      <div className="page">
+        <Coston2Setup />
+        <section className="route-failure" role="alert">
+          <ShieldCheck aria-hidden="true" />
+          <h1>Coston2 data is temporarily unavailable.</h1>
+          <p>The checkout has not classified this plan. The official faucet and network setup remain available above; retry the onchain read before signing anything.</p>
+          <button className="button button-secondary" type="button" onClick={() => runUiAction(refresh())}>Retry plan read</button>
+        </section>
       </div>
     )
   }
@@ -84,18 +113,33 @@ export function CheckoutPage() {
     )
   }
 
-  const price = plan.priceUsdMicro > 0n ? formatUsdMicro(plan.priceUsdMicro) : `${formatFxrp(plan.priceFxrp)} FXRP`
+  const price = plan.priceUsdMicro > 0n ? formatUsdMicro(plan.priceUsdMicro) : `${formatFxrp(plan.priceFxrp)} FTestXRP`
   const fixedCycles = plan.priceFxrp > 0n && amount > 0n ? amount / plan.priceFxrp : undefined
   const insufficientBalance = connected && amount > state.walletBalance
+  const invalidDeposit = deposit.trim().length > 0 && amount <= 0n
+  const requiresReviewedCeiling = plan.priceUsdMicro > 0n
+  const invalidInitialCharge = Boolean(initialChargeSelection.error)
+  const checkoutHelp = insufficientBalance
+    ? 'Your wallet needs more FTestXRP. Use the official faucet above, then refresh.'
+    : invalidDeposit
+      ? 'Enter a positive FTestXRP capacity.'
+      : initialChargeSelection.error
+        ? initialChargeSelection.error
+        : state.walletAllowance < amount
+          ? 'Two confirmations: FTestXRP approval, then one atomic open-and-initial-charge transaction.'
+          : 'One Coston2 transaction opens the mandate and charges its first cycle immediately.'
 
   return (
     <div className="page checkout-page">
-      <Link className="back-link" to="/plans"><ArrowLeft size={15} aria-hidden="true" /> All plans</Link>
+      <Link className="back-link" to="/plans"><ArrowLeft size={15} aria-hidden="true" /> Testnet checkouts</Link>
+      <Coston2Setup />
       <section className="checkout-layout">
         <div className="checkout-copy">
           <div className="checkout-title-row">
             <span className="eyebrow">{profile.merchantName}</span>
-            {profile.operatorControlled ? <Status tone="muted">Controlled pilot</Status> : null}
+            <Status tone="muted">Coston2 testnet</Status>
+            <Status tone="good">V2 live</Status>
+            {profile.operatorControlled ? <Status tone="muted">Controlled fixture</Status> : null}
           </div>
           <h1>{profile.name}</h1>
           <p className="checkout-summary">{profile.description}</p>
@@ -109,29 +153,49 @@ export function CheckoutPage() {
           </div>
         </div>
         <aside className="checkout-panel">
-          <div className="section-title"><div><span className="eyebrow">Open mandate</span><h2>Set prepaid capacity</h2></div><WalletCards aria-hidden="true" /></div>
-          <p>Standing can charge only what this mandate holds. Unused FXRP remains recoverable after cancellation.</p>
+          <div className="section-title"><div><span className="eyebrow">V2 browser checkout</span><h2>Open with access paid</h2></div><WalletCards aria-hidden="true" /></div>
+          <p>The transaction must both open the test mandate and emit its first ChargeExecuted event. Unused FTestXRP remains cancelable and recoverable.</p>
           <label htmlFor="checkout-deposit">Prepaid capacity</label>
           <div className="input-with-unit checkout-input">
-            <input id="checkout-deposit" inputMode="decimal" value={deposit} onChange={(event) => setDeposit(event.target.value)} />
-            <span>FXRP</span>
+            <input id="checkout-deposit" inputMode="decimal" value={deposit} aria-invalid={invalidDeposit} aria-describedby="checkout-deposit-help checkout-help-text" onChange={(event) => setDeposit(event.target.value)} />
+            <span>FTestXRP</span>
           </div>
+          <small className="field-help" id="checkout-deposit-help">Must cover the first charge; the remainder stays as recurring capacity.</small>
+
+          {requiresReviewedCeiling ? (
+            <div className="initial-charge-field">
+              <label htmlFor="max-initial-charge">Maximum initial charge</label>
+              <div className="input-with-unit checkout-input">
+                <input id="max-initial-charge" inputMode="decimal" placeholder="Review and enter a ceiling" value={reviewedMaxInitialCharge} aria-invalid={invalidInitialCharge} aria-describedby="max-initial-charge-help checkout-help-text" onChange={(event) => setReviewedMaxInitialCharge(event.target.value)} />
+                <span>FTestXRP</span>
+              </div>
+              <small className="field-help" id="max-initial-charge-help">Required FTSO slippage ceiling. The live USD conversion must be at or below this reviewed amount, and the ceiling cannot exceed your deposit.</small>
+            </div>
+          ) : (
+            <div className="fixed-initial-limit">
+              <span>Exact initial-charge ceiling</span>
+              <strong>{formatFxrp(plan.priceFxrp)} FTestXRP</strong>
+              <small>Fixed-price plans use the exact plan price, never the whole deposit.</small>
+            </div>
+          )}
+
           <div className="checkout-facts">
             <div><span>Plan cadence</span><strong>{formatPeriod(plan.periodSeconds)}</strong></div>
-            <div><span>Capacity</span><strong>{fixedCycles !== undefined ? `${fixedCycles.toString()} charge${fixedCycles === 1n ? '' : 's'}` : 'FTSO-priced'}</strong></div>
-            <div><span>Current wallet</span><strong>{connected ? `${formatFxrp(state.walletBalance)} FXRP` : 'Not connected'}</strong></div>
+            <div><span>Recurring capacity</span><strong>{fixedCycles !== undefined ? `${fixedCycles.toString()} cycle${fixedCycles === 1n ? '' : 's'} at the fixed price` : 'FTSO-priced'}</strong></div>
+            <div><span>First-charge ceiling</span><strong>{initialChargeSelection.ceiling > 0n ? `${formatFxrp(initialChargeSelection.ceiling, 6)} FTestXRP` : 'Review required'}</strong></div>
+            <div><span>Current wallet</span><strong>{connected ? `${formatFxrp(state.walletBalance)} FTestXRP` : 'Not connected'}</strong></div>
           </div>
           {!connected ? (
             <button className="button button-primary checkout-submit" type="button" onClick={() => runUiAction(connect())}>Connect wallet</button>
           ) : !correctChain ? (
             <button className="button button-primary checkout-submit" type="button" onClick={() => runUiAction(switchToCoston2())}>Switch to Coston2</button>
           ) : (
-            <button className="button button-primary checkout-submit" type="button" disabled={!plan.active || amount <= 0n || !account || insufficientBalance} onClick={() => runUiAction(subscribe())}>
-              Approve and open mandate
+            <button className="button button-primary checkout-submit" type="button" disabled={!plan.active || amount <= 0n || !account || insufficientBalance || invalidInitialCharge} onClick={() => runUiAction(subscribe())}>
+              Approve, open and charge
             </button>
           )}
-          <small>{insufficientBalance ? 'Wallet capacity is below this mandate amount.' : state.walletAllowance < amount ? 'Two wallet confirmations: token approval, then mandate.' : 'One wallet confirmation opens the mandate.'}</small>
-          {insufficientBalance ? <a className="checkout-help" href="https://faucet.flare.network/" target="_blank" rel="noreferrer">Get Coston2 test assets</a> : null}
+          <small id="checkout-help-text" aria-live="polite">{checkoutHelp}</small>
+          {insufficientBalance ? <a className="checkout-help" href="https://faucet.flare.network/" target="_blank" rel="noreferrer">Get more Coston2 test assets</a> : null}
         </aside>
       </section>
     </div>

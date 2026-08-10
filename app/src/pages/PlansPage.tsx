@@ -1,5 +1,7 @@
 import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Coston2Setup } from '../components/Coston2Setup'
 import { PlanRow } from '../components/PlanRow'
 import { useProtocol } from '../context/ProtocolContext'
 
@@ -18,8 +20,10 @@ export function PlansPage() {
   return (
     <div className="page">
       <section className="page-heading">
-        <div><span className="eyebrow">Plan directory</span><h1>Choose a recurring payment.</h1><p>Every plan is merchant-owned. Your prepaid mandate remains cancelable by your wallet.</p></div>
+        <div><span className="eyebrow">Live V2 browser lane · Coston2 testnet</span><h1>Open with the first cycle already paid.</h1><p>Review the onchain plan, choose bounded prepaid capacity, then open the mandate and charge its first cycle in one Coston2 transaction.</p></div>
+        <Link className="button button-secondary" to="/merchant">Merchant testnet tools</Link>
       </section>
+      <Coston2Setup />
       <div className="filterbar">
         <label className="search-field">
           <Search size={16} aria-hidden="true" />
@@ -38,4 +42,3 @@ export function PlansPage() {
     </div>
   )
 }
-

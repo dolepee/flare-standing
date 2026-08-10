@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { MandateRow } from '../components/MandateRow'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
@@ -16,10 +17,13 @@ export function MandatesPage() {
   return (
     <div className="page">
       <section className="page-heading split-heading">
-        <div><span className="eyebrow">Payment controls</span><h1>Mandates</h1><p>Top up, charge, cancel, or recover unused FXRP from one place.</p></div>
-        <div className="segmented" role="group" aria-label="Mandate view">
-          <button type="button" className={view === 'mine' ? 'active' : ''} onClick={() => setView('mine')}>My mandates</button>
-          <button type="button" className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>All activity</button>
+        <div><span className="eyebrow">Current V2 · Coston2 testnet controls</span><h1>Testnet mandates</h1><p>Manage current V2 mandates here. Retired V1 balances use a separate, restricted recovery route.</p></div>
+        <div className="heading-actions">
+          <Link className="button button-secondary" to="/legacy-recovery">Historical V1 recovery</Link>
+          <div className="segmented" role="group" aria-label="Mandate view">
+            <button type="button" className={view === 'mine' ? 'active' : ''} onClick={() => setView('mine')}>My mandates</button>
+            <button type="button" className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>All activity</button>
+          </div>
         </div>
       </section>
       <section className="mandate-grid">
@@ -30,4 +34,3 @@ export function MandatesPage() {
     </div>
   )
 }
-

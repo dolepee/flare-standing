@@ -43,9 +43,14 @@ export function buildStandingCalls(input: {
   standing: Address;
   planId: bigint;
   depositAtomic: bigint;
+  maxInitialChargeFxrpAtomic: bigint;
 }): readonly StandingCall[] {
   if (input.planId <= 0n) throw new Error("planId must be positive");
   if (input.depositAtomic <= 0n) throw new Error("depositAtomic must be positive");
+  if (input.maxInitialChargeFxrpAtomic <= 0n) throw new Error("maxInitialChargeFxrpAtomic must be positive");
+  if (input.maxInitialChargeFxrpAtomic > input.depositAtomic) {
+    throw new Error("maxInitialChargeFxrpAtomic cannot exceed the mandate deposit");
+  }
 
   return [
     {
@@ -62,11 +67,30 @@ export function buildStandingCalls(input: {
       value: 0n,
       data: encodeFunctionData({
         abi: standingAbi,
-        functionName: "openMandate",
-        args: [input.planId, input.depositAtomic],
+        functionName: "openMandateAndCharge",
+        args: [input.planId, input.depositAtomic, input.maxInitialChargeFxrpAtomic],
       }),
     },
   ] as const;
+}
+
+export function buildCancelWithdrawCalls(input: {
+  standing: Address;
+  mandateId: bigint;
+  remainingAtomic: bigint;
+}): readonly StandingCall[] {
+  if (input.mandateId <= 0n) throw new Error("mandateId must be positive");
+  if (input.remainingAtomic <= 0n) throw new Error("mandate has no remaining balance to recover");
+
+  return [{
+    target: input.standing,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: standingAbi,
+      functionName: "cancelAndWithdrawExact",
+      args: [input.mandateId, input.remainingAtomic],
+    }),
+  }];
 }
 
 export function encodePackedUserOperation(input: {
@@ -74,7 +98,9 @@ export function encodePackedUserOperation(input: {
   sender: Address;
   nonce: bigint;
 }): Hex {
-  if (input.calls.length !== 2) throw new Error("Standing atomic subscribe requires exactly two calls");
+  if (input.calls.length < 1 || input.calls.length > 8) {
+    throw new Error("Smart Account operation requires between one and eight calls");
+  }
   if (input.nonce < 0n) throw new Error("nonce cannot be negative");
 
   const callData = encodeFunctionData({

@@ -52,7 +52,7 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
       <div className="mandate-heading">
         <div>
           <span>Mandate #{mandate.id.toString()}</span>
-          <strong>{formatFxrp(mandate.remaining)} FXRP</strong>
+          <strong>{formatFxrp(mandate.remaining)} FTestXRP</strong>
         </div>
         <Status tone={mandate.canceled ? 'warning' : due ? 'muted' : 'good'}>
           {mandate.canceled ? 'Canceled' : due ? 'Charge due' : 'Funded'}
@@ -62,7 +62,7 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
         <div><dt>Plan</dt><dd>#{mandate.planId.toString()}</dd></div>
         <div><dt>Subscriber</dt><dd title={mandate.subscriber}>{shortAddress(mandate.subscriber)}</dd></div>
         <div><dt>Next charge</dt><dd>{formatTime(mandate.nextChargeAt)}</dd></div>
-        <div><dt>Price</dt><dd>{plan?.priceUsdMicro ? `$${Number(plan.priceUsdMicro) / 1_000_000}` : `${formatFxrp(plan?.priceFxrp ?? 0n)} FXRP`}</dd></div>
+        <div><dt>Price</dt><dd>{plan?.priceUsdMicro ? `$${Number(plan.priceUsdMicro) / 1_000_000}` : `${formatFxrp(plan?.priceFxrp ?? 0n)} FTestXRP`}</dd></div>
       </dl>
       <div className="mandate-actions">
         <Link className="button button-primary" to={`/access/${mandate.id.toString()}`}>
@@ -87,7 +87,7 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
       {isOwner && !mandate.canceled ? (
         <div className="compact-topup">
           <label htmlFor={`topup-${mandate.id}`}>Add capacity</label>
-          <div className="input-with-unit"><input id={`topup-${mandate.id}`} value={topUp} onChange={(event) => setTopUp(event.target.value)} /><span>FXRP</span></div>
+          <div className="input-with-unit"><input id={`topup-${mandate.id}`} value={topUp} onChange={(event) => setTopUp(event.target.value)} /><span>FTestXRP</span></div>
           <button className="icon-button" type="button" onClick={() => runUiAction(addFunds())} aria-label="Top up mandate">
             <RotateCcw size={16} aria-hidden="true" />
           </button>

@@ -1,4 +1,4 @@
-import { defineChain, getAddress, type Address } from "viem";
+import { defineChain, getAddress } from "viem";
 
 export const coston2 = defineChain({
   id: 114,
@@ -8,13 +8,3 @@ export const coston2 = defineChain({
 });
 
 export const registryAddress = getAddress("0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019");
-export const defaultStandingAddress = getAddress("0x8a29c741280554028d76666dc75558d98caab855");
-
-export function envAddress(name: string, fallback?: Address): Address {
-  const value = process.env[name];
-  if (!value) {
-    if (fallback) return fallback;
-    throw new Error(`${name} is required`);
-  }
-  return getAddress(value);
-}

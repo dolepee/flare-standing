@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-standing_address="${STANDING_ADDRESS:-0x8a29c741280554028d76666dc75558d98caab855}"
+standing_address="${STANDING_ADDRESS:?keeper test must provide STANDING_ADDRESS explicitly}"
 
 case "${1:-}" in
   chain-id)
