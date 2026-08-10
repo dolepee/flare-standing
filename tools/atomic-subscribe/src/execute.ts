@@ -6,9 +6,12 @@ import {
   getAddress,
   http,
   keccak256,
+  parseTransaction,
   parseEventLogs,
+  recoverTransactionAddress,
   type Address,
   type Hex,
+  type TransactionSerialized,
   type TransactionReceipt,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -45,6 +48,11 @@ import { buildAtomicSubscribePreview } from "./preflight.js";
 import { readMandateAtReceiptBlock, validateImmediateOpenPostconditions } from "./postconditions.js";
 import { decideDelayedMintResume } from "./recovery.js";
 import { deliveredNativePaymentDrops, requestedNativePaymentDrops } from "./xrpl.js";
+import {
+  captureFinalizedNonceAnchor,
+  proveFinalizedNonceDisposition,
+  viemFinalizedNonceRpc,
+} from "./coston2-nonce-recovery.js";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -244,17 +252,83 @@ async function recoverUnrecordedSuccessfulTransaction(): Promise<TransactionRece
   return client.getTransactionReceipt({ hash: event.transactionHash });
 }
 
-async function broadcastExecutionAttempt(attempt: NonNullable<ExecutionProgress["attempts"]>[number]): Promise<void> {
-  if (attempt.outcome !== "SIGNED" && attempt.outcome !== "PENDING") return;
+async function verifyPersistedExecutionAttempt(
+  attempt: NonNullable<ExecutionProgress["attempts"]>[number],
+): Promise<void> {
+  if (keccak256(attempt.serializedTransaction).toLowerCase() !== attempt.transactionHash.toLowerCase()) {
+    throw new Error("persisted executor transaction hash does not match its signed bytes");
+  }
+  const parsedNonce = parseTransaction(attempt.serializedTransaction).nonce;
+  if (parsedNonce === undefined || !Number.isSafeInteger(parsedNonce) || parsedNonce < 0 || parsedNonce !== attempt.nonce) {
+    throw new Error("persisted executor transaction nonce does not match its signed bytes");
+  }
+  const signer = await recoverTransactionAddress({
+    serializedTransaction: attempt.serializedTransaction as TransactionSerialized,
+  });
+  if (signer.toLowerCase() !== account.address.toLowerCase()) {
+    throw new Error("persisted executor transaction was signed by a different account");
+  }
+}
+
+async function markExecutionAttemptDisplaced(
+  attempt: NonNullable<ExecutionProgress["attempts"]>[number],
+  transactionHash: Hex,
+  blockNumber: string,
+): Promise<void> {
+  const attempts = (working.progress.attempts ?? []).map((candidate) =>
+    candidate.transactionHash.toLowerCase() === attempt.transactionHash.toLowerCase()
+      ? {
+          ...candidate,
+          outcome: "SUPERSEDED" as const,
+          supersededBy: { transactionHash, blockNumber },
+        }
+      : candidate,
+  );
+  await saveProgress({
+    ...working.progress,
+    phase: "PROOF_READY",
+    attempts,
+    lastError: {
+      at: new Date().toISOString(),
+      message: `executor nonce ${attempt.nonce} was consumed by finalized transaction ${transactionHash}`,
+    },
+  });
+}
+
+async function reconcileExecutionAttemptAfterError(
+  attempt: NonNullable<ExecutionProgress["attempts"]>[number],
+  originalError: unknown,
+): Promise<TransactionReceipt | "SUPERSEDED"> {
+  await verifyPersistedExecutionAttempt(attempt);
+  const disposition = await proveFinalizedNonceDisposition({
+    rpc: viemFinalizedNonceRpc(client),
+    anchor: attempt.nonceAnchor,
+    executorAddress: account.address,
+    nonce: attempt.nonce,
+    signedTransactionHash: attempt.transactionHash,
+  });
+  if (disposition.kind === "NOT_CONSUMED") throw originalError;
+  if (disposition.kind === "EXACT_HASH_MINED") {
+    return client.getTransactionReceipt({ hash: attempt.transactionHash });
+  }
+  await markExecutionAttemptDisplaced(attempt, disposition.transactionHash, disposition.blockNumber);
+  return "SUPERSEDED";
+}
+
+async function settleExecutionAttempt(
+  attempt: NonNullable<ExecutionProgress["attempts"]>[number],
+): Promise<TransactionReceipt | "SUPERSEDED"> {
+  if (attempt.outcome !== "SIGNED" && attempt.outcome !== "PENDING") {
+    throw new Error("executor attempt is not eligible for settlement");
+  }
+  await verifyPersistedExecutionAttempt(attempt);
   try {
     const broadcastHash = await client.sendRawTransaction({ serializedTransaction: attempt.serializedTransaction });
     if (broadcastHash.toLowerCase() !== attempt.transactionHash.toLowerCase()) {
       throw new Error("executor broadcast hash did not match the persisted signed transaction");
     }
   } catch (error) {
-    const visible = await client.getTransaction({ hash: attempt.transactionHash }).then(() => true).catch(async () =>
-      client.getTransactionReceipt({ hash: attempt.transactionHash }).then(() => true).catch(() => false));
-    if (!visible) throw error;
+    return reconcileExecutionAttemptAfterError(attempt, error);
   }
   const attempts = (working.progress.attempts ?? []).map((candidate) =>
     candidate.transactionHash.toLowerCase() === attempt.transactionHash.toLowerCase()
@@ -263,6 +337,11 @@ async function broadcastExecutionAttempt(attempt: NonNullable<ExecutionProgress[
   );
   if (attempt.outcome !== "PENDING" || working.progress.phase !== "EXECUTION_SUBMITTED") {
     await saveProgress({ ...working.progress, phase: "EXECUTION_SUBMITTED", attempts });
+  }
+  try {
+    return await client.waitForTransactionReceipt({ hash: attempt.transactionHash, timeout: 90_000 });
+  } catch (error) {
+    return reconcileExecutionAttemptAfterError(attempt, error);
   }
 }
 
@@ -452,14 +531,11 @@ let pendingAttempt = [...(working.progress.attempts ?? [])].reverse().find(
   (attempt) => attempt.outcome === "SIGNED" || attempt.outcome === "PENDING",
 );
 if (pendingAttempt) {
-  await broadcastExecutionAttempt(pendingAttempt);
-  pendingAttempt = [...(working.progress.attempts ?? [])].reverse().find(
-    (attempt) => attempt.transactionHash.toLowerCase() === pendingAttempt!.transactionHash.toLowerCase(),
-  );
-  if (!pendingAttempt) throw new Error("persisted executor attempt disappeared during broadcast");
-  const receipt = await client.waitForTransactionReceipt({ hash: pendingAttempt.transactionHash, timeout: 90_000 });
-  await finishFromReceipt(receipt);
-  process.exit(0);
+  const result = await settleExecutionAttempt(pendingAttempt);
+  if (result !== "SUPERSEDED") {
+    await finishFromReceipt(result);
+    process.exit(0);
+  }
 }
 
 const recoveredReceipt = await recoverUnrecordedSuccessfulTransaction();
@@ -520,6 +596,10 @@ if (!working.progress.proof) {
 
 const proof = working.progress.proof;
 if (!proof) throw new Error("durable FDC proof is unavailable");
+const executionNonceAnchor = await captureFinalizedNonceAnchor(
+  viemFinalizedNonceRpc(client),
+  account.address,
+);
 const preparedExecution = await walletClient.prepareTransactionRequest({
   account,
   chain: coston2,
@@ -531,11 +611,30 @@ const preparedExecution = await walletClient.prepareTransactionRequest({
   }),
   value: 0n,
 });
+const executionNonce = (preparedExecution as { nonce?: number }).nonce;
+if (!Number.isSafeInteger(executionNonce) || executionNonce === undefined || executionNonce < 0) {
+  throw new Error("prepared executor transaction omitted a safe account nonce");
+}
+if (executionNonceAnchor.transactionCount !== executionNonce) {
+  throw new Error("prepared executor nonce does not equal its finalized pre-sign account nonce");
+}
 const serializedExecution = await walletClient.signTransaction(preparedExecution as never);
+const signedExecutionNonce = parseTransaction(serializedExecution).nonce;
+if (signedExecutionNonce !== executionNonce) {
+  throw new Error("signed executor transaction did not preserve the prepared nonce");
+}
+const signedExecutionAddress = await recoverTransactionAddress({
+  serializedTransaction: serializedExecution as TransactionSerialized,
+});
+if (signedExecutionAddress.toLowerCase() !== account.address.toLowerCase()) {
+  throw new Error("signed executor transaction did not preserve the configured executor account");
+}
 const executorHash = keccak256(serializedExecution);
 const signedAttempt = {
   transactionHash: executorHash,
   serializedTransaction: serializedExecution,
+  nonce: executionNonce,
+  nonceAnchor: executionNonceAnchor,
   submittedAt: new Date().toISOString(),
   outcome: "SIGNED" as const,
 };
@@ -544,8 +643,9 @@ await saveProgress({
   phase: "EXECUTION_SIGNED",
   attempts: [...(working.progress.attempts ?? []), signedAttempt],
 });
+let executionResult: TransactionReceipt | "SUPERSEDED";
 try {
-  await broadcastExecutionAttempt(signedAttempt);
+  executionResult = await settleExecutionAttempt(signedAttempt);
 } catch (error) {
   await saveProgress({
     ...working.progress,
@@ -554,5 +654,14 @@ try {
   });
   throw error;
 }
-const receipt = await client.waitForTransactionReceipt({ hash: executorHash });
-await finishFromReceipt(receipt);
+if (executionResult === "SUPERSEDED") {
+  const recoveredAfterDisplacement = await recoverUnrecordedSuccessfulTransaction();
+  if (recoveredAfterDisplacement) {
+    await finishFromReceipt(recoveredAfterDisplacement);
+    process.exit(0);
+  }
+  throw new Error(
+    "executor transaction lost a finalized nonce race; state is safe and reusable, rerun once to sign at a fresh nonce",
+  );
+}
+await finishFromReceipt(executionResult);

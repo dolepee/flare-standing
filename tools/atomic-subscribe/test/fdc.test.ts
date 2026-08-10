@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { encodeAbiParameters, keccak256, serializeTransaction, type AbiParameter, type Address, type Hex } from "viem";
+import { encodeAbiParameters, keccak256, type AbiParameter, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { xrpPaymentVerificationAbi } from "../src/abis.js";
 import { obtainXrpPaymentProof, type FdcProofRequestState } from "../src/fdc.js";
 
 const address = (digit: string) => `0x${digit.repeat(40)}` as Address;
 const transactionId = `0x${"ab".repeat(32)}` as Hex;
-const proofOwner = address("1");
-const signedFdcTransaction = (nonce: number, signatureDigit: string) => serializeTransaction({
+const signingAccount = privateKeyToAccount(`0x${"1".repeat(64)}`);
+const proofOwner = signingAccount.address;
+const signedFdcTransaction = (nonce: number, value: number) => signingAccount.signTransaction({
   type: "eip1559",
   chainId: 114,
   nonce,
@@ -14,14 +16,12 @@ const signedFdcTransaction = (nonce: number, signatureDigit: string) => serializ
   maxPriorityFeePerGas: 1n,
   gas: 21_000n,
   to: address("2"),
-  value: 1n,
-}, {
-  r: `0x${signatureDigit.repeat(64)}` as Hex,
-  s: `0x${"2".repeat(64)}` as Hex,
-  yParity: 0,
+  value: BigInt(value),
 });
-const serializedRequestTransaction = signedFdcTransaction(7, "1");
+const serializedRequestTransaction = await signedFdcTransaction(7, 1);
 const requestTransactionHash = keccak256(serializedRequestTransaction);
+const finalizedBlockHash = `0x${"f".repeat(64)}` as Hex;
+const requestNonceAnchor = { blockNumber: "9", blockHash: finalizedBlockHash, transactionCount: 7 };
 const responseAbi = (
   xrpPaymentVerificationAbi.find((item) => item.type === "function" && item.name === "verifyXRPPayment") as {
     inputs: readonly { components?: readonly AbiParameter[] }[];
@@ -77,7 +77,11 @@ describe("durable FDC proof acquisition", () => {
         throw new Error(`unexpected read ${request.functionName}`);
       }),
       waitForTransactionReceipt: vi.fn(async () => ({ status: "success", blockNumber: 10n })),
-      getBlock: vi.fn(async () => ({ timestamp: 150n })),
+      getBlock: vi.fn(async (request: { blockTag?: string; blockNumber?: bigint }) =>
+        request.blockTag === "finalized"
+          ? { number: 9n, hash: finalizedBlockHash, transactions: [] }
+          : { number: request.blockNumber, hash: finalizedBlockHash, transactions: [], timestamp: 150n }),
+      getTransactionCount: vi.fn(async () => 7),
       sendRawTransaction: vi.fn(async () => requestTransactionHash),
       getTransaction: vi.fn(async () => ({ hash: requestTransactionHash })),
     };
@@ -144,10 +148,11 @@ describe("durable FDC proof acquisition", () => {
       Relay: address("4"),
       FdcVerification: address("5"),
     };
-    const revertedSerializedTransaction = signedFdcTransaction(7, "3");
+    const revertedSerializedTransaction = await signedFdcTransaction(7, 3);
     const revertedTransactionHash = keccak256(revertedSerializedTransaction);
-    const freshSerializedTransaction = signedFdcTransaction(8, "4");
+    const freshSerializedTransaction = await signedFdcTransaction(8, 4);
     const freshTransactionHash = keccak256(freshSerializedTransaction);
+    let finalizedAccountNonce = 7;
     const client = {
       readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
         if (request.functionName === "getContractAddressByName") return registryAddresses[String(request.args?.[0])];
@@ -159,11 +164,14 @@ describe("durable FDC proof acquisition", () => {
         if (request.functionName === "isFinalized") return true;
         throw new Error(`unexpected read ${request.functionName}`);
       }),
-      getTransactionCount: vi.fn(async () => 7),
+      getTransactionCount: vi.fn(async () => finalizedAccountNonce),
       waitForTransactionReceipt: vi.fn(async ({ hash }: { hash: Hex }) => hash === revertedTransactionHash
         ? { status: "reverted", blockNumber: 20n }
         : { status: "success", blockNumber: 21n }),
-      getBlock: vi.fn(async () => ({ timestamp: 160n })),
+      getBlock: vi.fn(async (request: { blockTag?: string; blockNumber?: bigint }) =>
+        request.blockTag === "finalized"
+          ? { number: 9n, hash: finalizedBlockHash, transactions: [] }
+          : { number: request.blockNumber, hash: finalizedBlockHash, transactions: [], timestamp: 160n }),
       sendRawTransaction: vi.fn(async ({ serializedTransaction }: { serializedTransaction: Hex }) =>
         keccak256(serializedTransaction)),
     };
@@ -187,6 +195,7 @@ describe("durable FDC proof acquisition", () => {
       requestTransactionHash: revertedTransactionHash,
       serializedRequestTransaction: revertedSerializedTransaction,
       requestTransactionNonce: 7,
+      requestNonceAnchor,
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:01:00.000Z",
     };
@@ -225,6 +234,8 @@ describe("durable FDC proof acquisition", () => {
     expect(walletClient.signTransaction).not.toHaveBeenCalled();
     expect(client.getTransactionCount).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+
+    finalizedAccountNonce = 8;
 
     let signedRetry: FdcProofRequestState | undefined;
     await expect(obtainXrpPaymentProof({
@@ -281,5 +292,99 @@ describe("durable FDC proof acquisition", () => {
     expect(result.proof.data.requestBody.transactionId).toBe(transactionId);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("proof-by-request-round-raw");
+  });
+
+  it("recovers a cross-host nonce collision after a receipt timeout without another verifier request", async () => {
+    const competingHash = `0x${"c".repeat(64)}` as Hex;
+    const anchorHash = `0x${"9".repeat(64)}` as Hex;
+    const headHash = `0x${"8".repeat(64)}` as Hex;
+    const signed = await signedFdcTransaction(7, 5);
+    const signedHash = keccak256(signed);
+    const registryAddresses: Record<string, Address> = {
+      FdcHub: address("2"),
+      FlareSystemsManager: address("3"),
+      Relay: address("4"),
+      FdcVerification: address("5"),
+    };
+    const client = {
+      readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "getContractAddressByName") return registryAddresses[String(request.args?.[0])];
+        throw new Error(`unexpected read ${request.functionName}`);
+      }),
+      sendRawTransaction: vi.fn(async () => signedHash),
+      waitForTransactionReceipt: vi.fn(async () => {
+        throw new Error("simulated receipt timeout after mempool acceptance");
+      }),
+      getBlock: vi.fn(async (request: { blockTag?: string; blockNumber?: bigint; includeTransactions?: boolean }) => {
+        if (request.blockTag === "finalized") {
+          return { number: 12n, hash: headHash, transactions: [] };
+        }
+        if (request.blockNumber === 10n) {
+          return { number: 10n, hash: anchorHash, transactions: [] };
+        }
+        if (request.blockNumber === 11n) {
+          return {
+            number: 11n,
+            hash: `0x${"7".repeat(64)}` as Hex,
+            transactions: [{ hash: competingHash, from: proofOwner, nonce: 7 }],
+          };
+        }
+        throw new Error(`unexpected block ${request.blockNumber}`);
+      }),
+      getTransactionCount: vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => blockNumber >= 11n ? 8 : 7),
+    };
+    const walletClient = {
+      chain: { id: 114 },
+      account: { address: proofOwner },
+      prepareTransactionRequest: vi.fn(),
+      signTransaction: vi.fn(),
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const resumed: FdcProofRequestState = {
+      version: 1,
+      transactionId,
+      proofOwner,
+      requestBytes: "0x1234",
+      phase: "SIGNED",
+      requestTransactionHash: signedHash,
+      serializedRequestTransaction: signed,
+      requestTransactionNonce: 7,
+      requestNonceAnchor: { blockNumber: "10", blockHash: anchorHash, transactionCount: 7 },
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:01:00.000Z",
+    };
+    let checkpoint: FdcProofRequestState | undefined;
+
+    await expect(obtainXrpPaymentProof({
+      transactionId,
+      proofOwner,
+      client: client as never,
+      walletClient: walletClient as never,
+      verifierUrl: "https://verifier.invalid",
+      verifierApiKey: "secret",
+      resume: resumed,
+      onState: async (state) => {
+        checkpoint = structuredClone(state);
+      },
+    })).rejects.toThrow("retry state persisted");
+
+    expect(checkpoint).toMatchObject({
+      phase: "RETRYABLE",
+      requestBytes: "0x1234",
+      minimumRequestNonce: 8,
+      displacedRequestTransactions: [{
+        transactionHash: signedHash,
+        nonce: 7,
+        consumingTransactionHash: competingHash,
+        blockNumber: "11",
+      }],
+    });
+    expect(checkpoint?.requestTransactionHash).toBeUndefined();
+    expect(checkpoint?.serializedRequestTransaction).toBeUndefined();
+    expect(checkpoint?.requestNonceAnchor).toBeUndefined();
+    expect(walletClient.prepareTransactionRequest).not.toHaveBeenCalled();
+    expect(walletClient.signTransaction).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

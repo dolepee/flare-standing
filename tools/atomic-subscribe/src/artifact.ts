@@ -8,15 +8,19 @@ import { standingAbi } from "./abis.js";
 import type { AtomicSubscribePreview } from "./preflight.js";
 import type { AtomicCancelWithdrawPreview } from "./control.js";
 import type { FdcProofRequestState, XrpPaymentProof } from "./fdc.js";
+import type { FinalizedNonceAnchor } from "./coston2-nonce-recovery.js";
 
 export type AtomicOperationPreview = AtomicSubscribePreview | AtomicCancelWithdrawPreview;
 
 export type ExecutionAttempt = {
   transactionHash: `0x${string}`;
   serializedTransaction: `0x${string}`;
+  nonce: number;
+  nonceAnchor: FinalizedNonceAnchor;
   submittedAt: string;
   receiptBlock?: string;
-  outcome: "SIGNED" | "PENDING" | "DELAYED" | "REVERTED" | "COMPLETE";
+  supersededBy?: { transactionHash: `0x${string}`; blockNumber: string };
+  outcome: "SIGNED" | "PENDING" | "SUPERSEDED" | "DELAYED" | "REVERTED" | "COMPLETE";
 };
 
 export type ExecutionProgress = {

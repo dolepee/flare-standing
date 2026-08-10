@@ -38,7 +38,8 @@ Regression tests cover inbound and outbound transfer fees, false-return and
 no-return tokens, accounting rollback, unauthorized plan and mandate mutation,
 schedule boundaries, exact withdrawals, ownership transfer, stale and invalid
 FTSO results, withdrawal from a due but active mandate, keeper/front-run balance
-drift, and same-key executor-process exclusion.
+drift, same-host executor-process exclusion, and finalized cross-host
+nonce-displacement recovery.
 
 Two stateful invariants run 256 sequences and 128,000 calls each:
 
