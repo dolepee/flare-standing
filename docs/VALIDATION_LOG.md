@@ -29,7 +29,7 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
   - `cd app && npm test` ✅ (22/22 passing)
   - `cd app && npm run test:browser` ✅ (38/38 desktop/mobile on a verified free port)
   - `cd tools/atomic-subscribe && npm test` ✅ (52/52 passing)
-  - `cd tools/keeper && npm test` ✅ (10/10 passing, including delayed/missed schedule paging and 1,001-mandate coverage)
+  - `cd tools/keeper && npm test` ✅ (17/17 passing, including hard work budgets, queued 1,001-mandate coverage, post-broadcast reconciliation, and pathological-receipt tail rotation)
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
   - Coston2 FTestXRP verified at:

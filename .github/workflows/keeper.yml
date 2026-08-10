@@ -9,12 +9,14 @@ on:
 
 concurrency:
   group: standing-coston2-keeper
-  cancel-in-progress: false
+  # Preserve every actual invocation ordinal. The default single pending slot
+  # replaces older queued runs and can therefore drop a keeper page.
+  queue: max
 
 jobs:
   charge-due-mandates:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
     permissions:
       contents: read
     defaults:
@@ -38,4 +40,7 @@ jobs:
           # A workflow invocation ordinal, unlike wall-clock time, advances once
           # per actual run even when best-effort schedules are delayed or missed.
           KEEPER_SCAN_CURSOR: ${{ github.run_number }}
-        run: npm start
+        # runKeeper admits at most 10s + (5 mandates * 30s) = 160s.
+        # The process watchdog leaves 20s for orderly failure, then a 10s hard-stop;
+        # the six-minute job limit also leaves setup/install headroom.
+        run: timeout --signal=TERM --kill-after=10s 180s node src/keeper.mjs

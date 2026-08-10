@@ -84,14 +84,20 @@ remaining balance exceeds its recorded deposits.
 
 ## Keeper operation
 
-`tools/keeper` is the candidate hosted Coston2 keeper. It verifies chain ID 114, pages
-through public mandate state using GitHub's durable workflow-run ordinal, withholds known-underfunded charges, simulates
-every candidate, and accepts success only when the receipt contains the bound
-`ChargeExecuted` event. Per-mandate failures are isolated so one bad item does
-not prevent later mandates in the page from being checked. Because paging advances
-per actual invocation rather than per wall-clock slot, a delayed or missed schedule
-cannot permanently omit a page. Oversized local scans fail closed unless the operator
-provides a non-negative `KEEPER_SCAN_CURSOR`. The scheduled GitHub Actions
+`tools/keeper` is the candidate hosted Coston2 keeper. It verifies chain ID 114,
+the exact V2 capability, and a 2 C2FLR keeper operating floor before scanning.
+It pages through public mandate state using GitHub's queued workflow-run ordinal,
+withholds known-underfunded charges, simulates every candidate, and accepts success
+only when the receipt contains a `ChargeExecuted` event for the exact mandate.
+Each run is capped at five mandates, with a 10-second snapshot, a 30-second budget
+per mandate, and a 180-second process watchdog. Ordinary pre-broadcast failures are
+isolated; an uncertain post-broadcast result stops that page after logging the hash
+and reconciling state. Later visits rotate their first mandate, so one pathological
+receipt cannot permanently starve the page tail. GitHub's `queue: max` preserves
+actual invocation ordinals while serializing the dedicated signer. Delayed or absent
+best-effort schedules postpone coverage but do not fabricate a skipped ordinal.
+Oversized local scans fail closed unless the operator provides a non-negative
+`KEEPER_SCAN_CURSOR`. The scheduled GitHub Actions
 worker is configured for a dedicated low-balance Coston2 key and never receives
 custody. It is not a live-uptime claim until the reviewed workflow runs from the
 default branch and that key records a charge receipt.

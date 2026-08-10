@@ -68,13 +68,20 @@ the historical contract cannot be modified in place.
 - The owner can pause new mandate openings, top-ups, and charges, but cannot block cancellation or withdrawal of already-canceled funds.
 - The keeper is permissionless and does not receive custody.
 - The candidate hosted-keeper workflow is configured for a dedicated
-  low-balance key, bounded coverage-safe paging keyed by GitHub's durable
-  workflow-run ordinal, preflight affordability checks,
-  simulation, and receipt-event verification. It is not a live-uptime claim
+  low-balance key, a 2 C2FLR fail-closed operating floor, exact V2 identity and
+  chain checks, and bounded five-mandate paging keyed by GitHub's queued
+  workflow-run ordinal. Its 10-second snapshot plus five 30-second mandate
+  budgets admit at most 160 seconds of application work; an outer 180-second
+  watchdog has a 10-second hard-stop. It performs preflight affordability checks,
+  simulation, and exact-mandate receipt-event verification. An uncertain
+  post-broadcast result stops the page after hash logging and state reconciliation;
+  rotating the first item on later page visits prevents a pathological receipt from
+  permanently starving the tail. It is not a live-uptime claim
   until the reviewed workflow runs from the default branch and the dedicated
   key records a receipt. GitHub Actions scheduling remains best-effort and is
-  not a precise-cadence guarantee; delayed or missed schedule slots do not alter
-  which page the next invocation scans. The shell keeper remains read-only by default.
+  not a precise-cadence guarantee; `queue: max` serializes up to 100 pending actual
+  invocations rather than replacing the prior pending run. The shell keeper remains
+  read-only by default.
 - The client-side entitlement route is a reference integration, not a secure
   content boundary. A production merchant must authenticate the subscriber
   wallet and enforce entitlement server-side.
