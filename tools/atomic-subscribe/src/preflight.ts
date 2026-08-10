@@ -15,7 +15,7 @@ import {
   encodeHashInstruction,
   parseDeposit,
 } from "./protocol.js";
-import { requireStandingV2 } from "./standing-v2.js";
+import { requireStandingFxrpBinding, requireStandingV2 } from "./standing-v2.js";
 
 export type AtomicSubscribePreview = {
   operation: "SUBSCRIBE_V2";
@@ -107,8 +107,9 @@ export async function buildAtomicSubscribePreview(input: {
       args: ["AssetManagerFXRP"],
     }),
   ]);
+  const fxrp = await requireStandingFxrpBinding(client, standing, assetManager);
 
-  const [personalAccount, fxrp, xrplDestination, executorFeeUBA, feeBips, minimumFeeUBA, paused, plan] =
+  const [personalAccount, xrplDestination, executorFeeUBA, feeBips, minimumFeeUBA, paused, plan] =
     await Promise.all([
       client.readContract({
         address: masterAccountController,
@@ -116,7 +117,6 @@ export async function buildAtomicSubscribePreview(input: {
         functionName: "getPersonalAccount",
         args: [input.xrplAddress],
       }),
-      client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "fAsset" }),
       client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "directMintingPaymentAddress" }),
       client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingExecutorFeeUBA" }),
       client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingFeeBIPS" }),

@@ -14,7 +14,7 @@ import {
   encodeHashInstruction,
   parseDeposit,
 } from "./protocol.js";
-import { requireStandingV2 } from "./standing-v2.js";
+import { requireStandingFxrpBinding, requireStandingV2 } from "./standing-v2.js";
 
 export type AtomicCancelWithdrawPreview = {
   operation: "CANCEL_WITHDRAW";
@@ -101,7 +101,8 @@ export async function buildCancelWithdrawPreview(input: {
       args: ["AssetManagerFXRP"],
     }),
   ]);
-  const [personalAccount, fxrp, xrplDestination, executorFeeUBA, feeBips, minimumFeeUBA, mandate] =
+  const fxrp = await requireStandingFxrpBinding(client, standing, assetManager);
+  const [personalAccount, xrplDestination, executorFeeUBA, feeBips, minimumFeeUBA, mandate] =
     await Promise.all([
       client.readContract({
         address: controller,
@@ -109,7 +110,6 @@ export async function buildCancelWithdrawPreview(input: {
         functionName: "getPersonalAccount",
         args: [input.xrplAddress],
       }),
-      client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "fAsset" }),
       client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "directMintingPaymentAddress" }),
       client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingExecutorFeeUBA" }),
       client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingFeeBIPS" }),

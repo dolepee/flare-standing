@@ -180,17 +180,17 @@ export type ExecutionLock = {
 };
 
 /**
- * Holds an atomic create-if-absent lock for the lifetime of one executor process.
- * A stale lock is deliberately never stolen automatically: an operator must first
- * establish that the recorded process is dead, preserving fail-closed semantics.
+ * Acquires a process-lifetime file lock with durable holder metadata.
+ *
+ * This is shared by the XRPL payment journal and the Coston2 executor. A stale
+ * lock is deliberately never stolen automatically: an operator must first
+ * establish that the recorded process is dead, preserving fail-closed
+ * semantics around both payment and execution effects.
  */
-export function acquireExecutionLock(
+export function acquireFailClosedProcessLock(
   path: string,
-  identity: {
-    xrplTransactionHash: string;
-    userOperationHash: string;
-    executorAddress: string;
-  },
+  label: string,
+  identity: Record<string, string | number>,
 ): ExecutionLock {
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -198,14 +198,12 @@ export function acquireExecutionLock(
 
   const ownerToken = randomUUID();
   const record = {
+    ...identity,
     version: 1,
     ownerToken,
     pid: process.pid,
     hostname: hostname(),
     acquiredAt: new Date().toISOString(),
-    xrplTransactionHash: validatedXrplTransactionHash(identity.xrplTransactionHash),
-    userOperationHash: identity.userOperationHash.toLowerCase(),
-    executorAddress: identity.executorAddress.toLowerCase(),
   };
 
   let descriptor: number;
@@ -225,7 +223,8 @@ export function acquireExecutionLock(
         // Keep the lock fail-closed even when its metadata cannot be parsed.
       }
       throw new Error(
-        `atomic execution is already locked by ${holder}; do not remove the lock until the recorded process is confirmed dead`,
+        `${label} is already locked at ${path} by ${holder}; ` +
+          "do not remove the lock until the recorded process is confirmed dead",
       );
     }
     throw error;
@@ -250,13 +249,33 @@ export function acquireExecutionLock(
       if (existing.ownerToken !== ownerToken) {
         closeSync(descriptor);
         released = true;
-        throw new Error("refusing to release an atomic execution lock owned by another process");
+        throw new Error(`refusing to release ${label} owned by another process`);
       }
       closeSync(descriptor);
       unlinkSync(path);
       released = true;
     },
   };
+}
+
+/**
+ * Holds an atomic create-if-absent lock for the lifetime of one executor process.
+ * A stale lock is deliberately never stolen automatically: an operator must first
+ * establish that the recorded process is dead, preserving fail-closed semantics.
+ */
+export function acquireExecutionLock(
+  path: string,
+  identity: {
+    xrplTransactionHash: string;
+    userOperationHash: string;
+    executorAddress: string;
+  },
+): ExecutionLock {
+  return acquireFailClosedProcessLock(path, "atomic execution", {
+    xrplTransactionHash: validatedXrplTransactionHash(identity.xrplTransactionHash),
+    userOperationHash: identity.userOperationHash.toLowerCase(),
+    executorAddress: identity.executorAddress.toLowerCase(),
+  });
 }
 
 export function operationKind(preview: AtomicOperationPreview): "SUBSCRIBE_V2" | "CANCEL_WITHDRAW" | "LEGACY_SUBSCRIBE" {

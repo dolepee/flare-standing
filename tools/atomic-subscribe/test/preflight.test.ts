@@ -20,6 +20,7 @@ describe("V2 subscription preflight", () => {
         if (request.functionName === "getContractAddressByName") {
           return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
         }
+        if (request.functionName === "fxrp") return fxrp;
         if (request.functionName === "getPersonalAccount") return personalAccount;
         if (request.functionName === "fAsset") return fxrp;
         if (request.functionName === "directMintingPaymentAddress") return "rCoreVault";
@@ -63,6 +64,7 @@ describe("V2 subscription preflight", () => {
         if (request.functionName === "getContractAddressByName") {
           return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
         }
+        if (request.functionName === "fxrp") return fxrp;
         if (request.functionName === "getPersonalAccount") return personalAccount;
         if (request.functionName === "fAsset") return fxrp;
         if (request.functionName === "directMintingPaymentAddress") return "rCoreVault";
@@ -134,6 +136,39 @@ describe("V2 subscription preflight", () => {
     })).rejects.toThrow("has an incompatible identity");
     expect(client.readContract).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects a Standing/AssetManager FXRP mismatch before reading payment dependencies", async () => {
+    const controller = address("1");
+    const assetManager = address("2");
+    const standing = address("5");
+    const client = {
+      readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "standingIdentity") return [2n, STANDING_V2_CAPABILITY] as const;
+        if (request.functionName === "getContractAddressByName") {
+          return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
+        }
+        if (request.functionName === "fxrp") return address("4");
+        if (request.functionName === "fAsset") return address("7");
+        throw new Error(`unexpected read ${request.functionName}`);
+      }),
+    };
+
+    await expect(buildAtomicSubscribePreview({
+      xrplAddress: "r9cZA1mLK5R5Am25ArfXFmqgNwjZgnfk59",
+      planId: 4n,
+      deposit: "1",
+      maxInitialChargeFxrp: "0.2",
+      standing,
+      client: client as never,
+    })).rejects.toThrow("FXRP binding mismatch");
+    expect(client.readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "getPersonalAccount" }),
+    );
+    expect(client.readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "directMintingPaymentAddress" }),
+    );
+    expect(client.readContract).not.toHaveBeenCalledWith(expect.objectContaining({ functionName: "plans" }));
+  });
 });
 
 describe("cancel-withdraw preflight", () => {
@@ -150,6 +185,7 @@ describe("cancel-withdraw preflight", () => {
         if (request.functionName === "getContractAddressByName") {
           return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
         }
+        if (request.functionName === "fxrp") return fxrp;
         if (request.functionName === "getPersonalAccount") return personalAccount;
         if (request.functionName === "fAsset") return fxrp;
         if (request.functionName === "directMintingPaymentAddress") return "rCoreVault";
@@ -197,5 +233,37 @@ describe("cancel-withdraw preflight", () => {
     })).rejects.toThrow("does not expose the required V2 identity");
     expect(client.readContract).toHaveBeenCalledTimes(1);
     expect(client.readContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: "standingIdentity" }));
+  });
+
+  it("rejects a Standing/AssetManager FXRP mismatch before constructing a cancellation payment", async () => {
+    const controller = address("1");
+    const assetManager = address("2");
+    const standing = address("5");
+    const client = {
+      readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "standingIdentity") return [2n, STANDING_V2_CAPABILITY] as const;
+        if (request.functionName === "getContractAddressByName") {
+          return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
+        }
+        if (request.functionName === "fxrp") return address("4");
+        if (request.functionName === "fAsset") return address("7");
+        throw new Error(`unexpected read ${request.functionName}`);
+      }),
+    };
+
+    await expect(buildCancelWithdrawPreview({
+      xrplAddress: "r9cZA1mLK5R5Am25ArfXFmqgNwjZgnfk59",
+      mandateId: 5n,
+      authorizationMint: "0.1",
+      standing,
+      client: client as never,
+    })).rejects.toThrow("FXRP binding mismatch");
+    expect(client.readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "getPersonalAccount" }),
+    );
+    expect(client.readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "directMintingPaymentAddress" }),
+    );
+    expect(client.readContract).not.toHaveBeenCalledWith(expect.objectContaining({ functionName: "mandates" }));
   });
 });

@@ -2,7 +2,9 @@ import { mkdir } from "node:fs/promises";
 import { dirname, extname } from "node:path";
 import { hashes } from "xrpl";
 import {
+  acquireFailClosedProcessLock,
   assertFreshPreviewMatches,
+  operationKind,
   readJson,
   transactionArtifactPath,
   writePrivateJson,
@@ -79,6 +81,10 @@ export function xrplPaymentStatePath(basePath: string, operationHash: string): s
   const extension = extname(basePath);
   const stem = extension ? basePath.slice(0, -extension.length) : basePath;
   return `${stem}.xrpl-${digest}.state.json`;
+}
+
+export function xrplPaymentLockPath(basePath: string, operationHash: string): string {
+  return `${xrplPaymentStatePath(basePath, operationHash)}.lock`;
 }
 
 function isMissingFile(error: unknown): boolean {
@@ -170,11 +176,11 @@ async function validatedLedgerIndex(input: Pick<RunDurableXrplPaymentInput<unkno
  * transaction remains live, rebroadcasts only those same bytes. A timeout or
  * process crash therefore cannot turn into a second payment.
  */
-export async function runDurableXrplPayment<Transaction>(
+async function runDurableXrplPaymentLocked<Transaction>(
   input: RunDurableXrplPaymentInput<Transaction>,
+  statePath: string,
 ): Promise<DurableXrplPaymentResult> {
   const now = input.now ?? (() => new Date().toISOString());
-  const statePath = xrplPaymentStatePath(input.outputBasePath, input.preview.instruction.userOperationHash);
   let state = await readStateIfPresent<Transaction>(statePath);
   const resumed = state !== null;
   let validatedBeforeSigning = false;
@@ -303,4 +309,32 @@ export async function runDurableXrplPayment<Transaction>(
   } satisfies ValidatedPaymentState<Transaction>);
 
   return { xrplTransactionHash: expectedHash, statePath, sentArtifactPath, resumed };
+}
+
+/**
+ * Serializes the complete payment-state transition for one reviewed operation.
+ * The lock covers state reads, expired PREPARED replacement, signing,
+ * broadcasting, and final journaling so a concurrent sender can never retain a
+ * stale PREPARED snapshot and overwrite a later SIGNED or VALIDATED state.
+ */
+export async function runDurableXrplPayment<Transaction>(
+  input: RunDurableXrplPaymentInput<Transaction>,
+): Promise<DurableXrplPaymentResult> {
+  const operationHash = input.preview.instruction.userOperationHash;
+  const statePath = xrplPaymentStatePath(input.outputBasePath, operationHash);
+  const lock = acquireFailClosedProcessLock(
+    xrplPaymentLockPath(input.outputBasePath, operationHash),
+    "XRPL payment state",
+    {
+      operation: operationKind(input.preview),
+      userOperationHash: operationHash.toLowerCase(),
+      xrplSource: input.preview.xrplSource,
+    },
+  );
+
+  try {
+    return await runDurableXrplPaymentLocked(input, statePath);
+  } finally {
+    lock.release();
+  }
 }

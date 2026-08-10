@@ -8,6 +8,7 @@ import { readJson, writePrivateJson, type AtomicOperationPreview, type SentAtomi
 import { standingAbi } from "../src/abis.js";
 import {
   runDurableXrplPayment,
+  xrplPaymentLockPath,
   xrplPaymentStatePath,
   type XrplPaymentState,
   type XrplTransactionOutcome,
@@ -263,6 +264,120 @@ describe("durable XRPL payment state", () => {
         expect(completedState.phase).toBe("VALIDATED");
         expect(completedState.preparedTransaction.LastLedgerSequence).toBe(200);
       } finally {
+        await rm(value.directory, { recursive: true, force: true });
+      }
+    });
+
+    it("serializes concurrent replacement of the same expired PREPARED payment", async () => {
+      const value = await fixture(operation);
+      const firstReplacement: Payment = {
+        ...value.transaction,
+        Sequence: 2,
+        LastLedgerSequence: 200,
+      };
+      const secondReplacement: Payment = {
+        ...value.transaction,
+        Sequence: 3,
+        LastLedgerSequence: 200,
+      };
+      const firstSigned = value.wallet.sign(firstReplacement);
+      let releaseFirstReplacement!: () => void;
+      const firstReplacementMayFinish = new Promise<void>((resolve) => {
+        releaseFirstReplacement = resolve;
+      });
+      let announceFirstReplacement!: () => void;
+      const firstReplacementStarted = new Promise<void>((resolve) => {
+        announceFirstReplacement = resolve;
+      });
+      let firstPrepares = 0;
+      let firstSigns = 0;
+      let firstBroadcasts = 0;
+      let secondPrepares = 0;
+      let secondSigns = 0;
+      let secondBroadcasts = 0;
+      let first: Promise<Awaited<ReturnType<typeof runDurableXrplPayment<Payment>>>> | undefined;
+
+      try {
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => undefined,
+          prepareTransaction: async () => value.transaction,
+          signTransaction: (transaction) => value.wallet.sign(transaction),
+          getValidatedLedgerIndex: async () => {
+            throw new Error("simulated crash with PREPARED durable");
+          },
+          lookupTransaction: async () => null,
+          broadcastAndWait: async () => {
+            throw new Error("must not broadcast during setup");
+          },
+        })).rejects.toThrow("simulated crash with PREPARED durable");
+
+        first = runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => undefined,
+          prepareTransaction: async () => {
+            firstPrepares += 1;
+            announceFirstReplacement();
+            await firstReplacementMayFinish;
+            return firstReplacement;
+          },
+          signTransaction: (transaction) => {
+            firstSigns += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 101,
+          lookupTransaction: async () => null,
+          broadcastAndWait: async (blob) => {
+            firstBroadcasts += 1;
+            expect(blob).toBe(firstSigned.tx_blob);
+            return success(firstSigned.hash);
+          },
+        });
+
+        await firstReplacementStarted;
+        await expect(runDurableXrplPayment<Payment>({
+          preview: value.preview,
+          outputBasePath: value.outputBasePath,
+          validateBeforeSigning: async () => undefined,
+          prepareTransaction: async () => {
+            secondPrepares += 1;
+            return secondReplacement;
+          },
+          signTransaction: (transaction) => {
+            secondSigns += 1;
+            return value.wallet.sign(transaction);
+          },
+          getValidatedLedgerIndex: async () => 101,
+          lookupTransaction: async () => null,
+          broadcastAndWait: async () => {
+            secondBroadcasts += 1;
+            return success(value.wallet.sign(secondReplacement).hash);
+          },
+        })).rejects.toThrow("XRPL payment state is already locked");
+
+        releaseFirstReplacement();
+        const completed = await first;
+        expect(completed.xrplTransactionHash).toBe(firstSigned.hash);
+        expect(firstPrepares).toBe(1);
+        expect(firstSigns).toBe(1);
+        expect(firstBroadcasts).toBe(1);
+        expect(secondPrepares).toBe(0);
+        expect(secondSigns).toBe(0);
+        expect(secondBroadcasts).toBe(0);
+        const state = await readJson<XrplPaymentState<Payment>>(completed.statePath);
+        expect(state.phase).toBe("VALIDATED");
+        if (state.phase === "VALIDATED") {
+          expect(state.xrplTransactionHash).toBe(firstSigned.hash);
+          expect(state.preparedTransaction.Sequence).toBe(2);
+        }
+        await expect(access(xrplPaymentLockPath(value.outputBasePath, value.preview.instruction.userOperationHash))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      } finally {
+        releaseFirstReplacement();
+        await first?.catch(() => undefined);
         await rm(value.directory, { recursive: true, force: true });
       }
     });

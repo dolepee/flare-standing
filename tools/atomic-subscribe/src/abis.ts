@@ -94,6 +94,13 @@ export const standingAbi = [
   },
   {
     type: "function",
+    name: "fxrp",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
     name: "paused",
     stateMutability: "view",
     inputs: [],
