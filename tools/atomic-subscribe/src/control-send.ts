@@ -85,6 +85,7 @@ try {
       return transaction;
     },
     signTransaction: (transaction) => wallet.sign(transaction),
+    getValidatedLedgerIndex: () => client.getLedgerIndex(),
     lookupTransaction: async (hash) => {
       try {
         return transactionOutcome(await client.request({ command: "tx", transaction: hash }));

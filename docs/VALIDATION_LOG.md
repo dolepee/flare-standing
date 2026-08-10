@@ -24,12 +24,12 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - Candidate V2 local gates are complete as of 2026-08-10:
   - `forge fmt` ✅
   - `forge build` ✅
-  - `forge test` ✅ (37/37 passing, including 2 stateful invariants with 256 runs and 128,000 calls each)
+  - `forge test` ✅ (38/38 passing, including 2 stateful invariants with 256 runs and 128,000 calls each)
   - `forge coverage --report lcov` ✅
   - `cd app && npm test` ✅ (22/22 passing)
   - `cd app && npm run test:browser` ✅ (38/38 desktop/mobile on a verified free port)
-  - `cd tools/atomic-subscribe && npm test` ✅ (45/45 passing)
-  - `cd tools/keeper && npm test` ✅ (7/7 passing)
+  - `cd tools/atomic-subscribe && npm test` ✅ (52/52 passing)
+  - `cd tools/keeper && npm test` ✅ (10/10 passing, including delayed/missed schedule paging and 1,001-mandate coverage)
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
   - Coston2 FTestXRP verified at:

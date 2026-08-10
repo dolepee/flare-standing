@@ -56,6 +56,7 @@ type RunDurableXrplPaymentInput<Transaction> = {
   validateBeforeSigning: () => Promise<void>;
   prepareTransaction: () => Promise<Transaction>;
   signTransaction: (transaction: Transaction) => { tx_blob: string; hash: string };
+  getValidatedLedgerIndex: () => Promise<number>;
   lookupTransaction: (hash: string) => Promise<XrplTransactionOutcome | null>;
   broadcastAndWait: (signedTransactionBlob: string) => Promise<XrplTransactionOutcome>;
   now?: () => string;
@@ -140,13 +141,34 @@ function assertSuccessfulOutcome(outcome: XrplTransactionOutcome, expectedHash: 
   }
 }
 
+function preparedLastLedgerSequence(transaction: unknown): number {
+  if (typeof transaction !== "object" || transaction === null || !("LastLedgerSequence" in transaction)) {
+    throw new Error("prepared XRPL transaction omitted LastLedgerSequence");
+  }
+  const sequence = (transaction as { LastLedgerSequence?: unknown }).LastLedgerSequence;
+  if (!Number.isSafeInteger(sequence) || (sequence as number) <= 0) {
+    throw new Error("prepared XRPL transaction has an invalid LastLedgerSequence");
+  }
+  return sequence as number;
+}
+
+async function validatedLedgerIndex(input: Pick<RunDurableXrplPaymentInput<unknown>, "getValidatedLedgerIndex">): Promise<number> {
+  const index = await input.getValidatedLedgerIndex();
+  if (!Number.isSafeInteger(index) || index <= 0) {
+    throw new Error("XRPL client returned an invalid validated ledger index");
+  }
+  return index;
+}
+
 /**
  * Persist-before-effect XRPL sender.
  *
  * The reviewed, autofilled transaction is written as PREPARED before signing.
  * The exact signed bytes and their hash are then written as SIGNED before any
- * broadcast. Every resume reconciles or rebroadcasts those same bytes, so a
- * timeout or process crash can never turn into a second payment.
+ * broadcast. An expired PREPARED transaction may be durably refreshed because
+ * it has no persisted signature; every SIGNED resume reconciles or, while the
+ * transaction remains live, rebroadcasts only those same bytes. A timeout or
+ * process crash therefore cannot turn into a second payment.
  */
 export async function runDurableXrplPayment<Transaction>(
   input: RunDurableXrplPaymentInput<Transaction>,
@@ -184,6 +206,32 @@ export async function runDurableXrplPayment<Transaction>(
     // re-check live state so a stale contract nonce/mandate cannot turn into a
     // fresh XRP payment on resume.
     if (!validatedBeforeSigning) await input.validateBeforeSigning();
+
+    const currentLedger = await validatedLedgerIndex(input);
+    const preparedLastLedger = preparedLastLedgerSequence(state.preparedTransaction);
+    if (preparedLastLedger <= currentLedger) {
+      // PREPARED is the only phase that can be replaced safely: no signed
+      // bytes or transaction hash have been persisted and this sender never
+      // broadcasts before advancing to SIGNED. Persist the replacement before
+      // asking the wallet to sign so another crash remains recoverable.
+      const replacementTransaction = await input.prepareTransaction();
+      const replacementLastLedger = preparedLastLedgerSequence(replacementTransaction);
+      if (replacementLastLedger <= currentLedger) {
+        throw new Error(
+          `replacement XRPL transaction expires at ledger ${replacementLastLedger}, not after validated ledger ${currentLedger}`,
+        );
+      }
+      const replacementState: PreparedPaymentState<Transaction> = {
+        version: 1,
+        phase: "PREPARED",
+        preview: state.preview,
+        preparedTransaction: replacementTransaction,
+        preparedAt: now(),
+      };
+      await writePrivateJson(statePath, replacementState);
+      state = replacementState;
+    }
+
     const signed = input.signTransaction(state.preparedTransaction);
     const signedHash = validatedHash(signed.hash, "wallet-supplied XRPL transaction hash");
     const derivedHash = validatedHash(hashes.hashSignedTx(signed.tx_blob), "signed XRPL transaction hash");
@@ -224,6 +272,14 @@ export async function runDurableXrplPayment<Transaction>(
   if (outcome?.validated === true) {
     assertSuccessfulOutcome(outcome, expectedHash);
   } else {
+    const currentLedger = await validatedLedgerIndex(input);
+    const signedLastLedger = preparedLastLedgerSequence(state.preparedTransaction);
+    if (signedLastLedger <= currentLedger) {
+      throw new Error(
+        `persisted SIGNED XRPL transaction ${expectedHash} expired at ledger ${signedLastLedger}; ` +
+          "the signed bytes were preserved and must not be replaced without explicit payment reconciliation",
+      );
+    }
     outcome = await input.broadcastAndWait(state.signedTransactionBlob);
     assertSuccessfulOutcome(outcome, expectedHash);
   }

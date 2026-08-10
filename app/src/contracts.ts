@@ -1,6 +1,7 @@
 import { parseAbi } from 'viem'
 
 export const standingAbi = parseAbi([
+  'function standingIdentity() pure returns (uint256 version, bytes32 capability)',
   'function planCount() view returns (uint256)',
   'function mandateCount() view returns (uint256)',
   'function paused() view returns (bool)',

@@ -13,6 +13,9 @@ interface IPriceAdapter {
 }
 
 contract StandingMandates {
+    bytes32 private constant V2_CAPABILITY =
+        keccak256("standing.mandates.v2.open-and-charge.cancel-and-withdraw-exact");
+
     struct Plan {
         address merchant;
         uint256 priceUsdMicro;
@@ -124,6 +127,13 @@ contract StandingMandates {
         entered = true;
         _;
         entered = false;
+    }
+
+    /// @notice Returns the exact release identity required by V2-only clients.
+    /// @dev A missing selector, different version, or different capability hash
+    ///      must be treated as an incompatible deployment before authorization.
+    function standingIdentity() external pure returns (uint256 version, bytes32 capability) {
+        return (2, V2_CAPABILITY);
     }
 
     function setPaused(bool value) external onlyOwner {

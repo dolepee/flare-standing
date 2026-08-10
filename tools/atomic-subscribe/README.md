@@ -5,7 +5,13 @@ This Coston2 tool builds review-first `0xFE` instructions authorized by an XRPL 
 - **V2 subscribe:** direct-mint XRP into FXRP, approve the reviewed Standing V2 contract, open a mandate, and collect the first bounded charge atomically.
 - **Cancel and withdraw:** authorize the XRPL-derived Personal Account to cancel an existing mandate and return its unused FXRP to that same Personal Account.
 
-No command silently upgrades a V1 artifact. V2 subscription artifacts must contain `operation: SUBSCRIBE_V2`, `contractVersion: 2`, the reviewed contract address, and an explicit `maxInitialChargeFxrp`.
+No command silently upgrades a V1 artifact. Before either preview can report
+`READY`, it calls `standingIdentity()` on the supplied contract and requires the
+exact V2 version and capability hash. The historical V1 deployment has no such
+getter and therefore fails closed before any XRPL authorization can be built or
+sent. V2 subscription artifacts must contain `operation: SUBSCRIBE_V2`,
+`contractVersion: 2`, the reviewed contract address, and an explicit
+`maxInitialChargeFxrp`.
 
 ## Review a V2 subscription
 

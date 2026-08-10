@@ -27,6 +27,12 @@ The current source adds these protections after the first Coston2 validation dep
    keeper front-run changes the balance and atomically reverts the exit instead
    of silently returning less. It does not claim to redeem that FXRP back to
    native XRP.
+11. **Onchain V2 identity gate.** The contract publishes an exact version and
+   capability hash for the atomic open-and-charge and exact cancel-withdraw
+   surface. Both XRPL preview builders require that identity before resolving a
+   plan or mandate and before returning `READY`; the historical V1 deployment
+   fails closed instead of accepting an irreversible authorization for a V2-only
+   selector.
 
 Regression tests cover inbound and outbound transfer fees, false-return and
 no-return tokens, accounting rollback, unauthorized plan and mandate mutation,
@@ -62,11 +68,13 @@ the historical contract cannot be modified in place.
 - The owner can pause new mandate openings, top-ups, and charges, but cannot block cancellation or withdrawal of already-canceled funds.
 - The keeper is permissionless and does not receive custody.
 - The candidate hosted-keeper workflow is configured for a dedicated
-  low-balance key, bounded stateless paging, preflight affordability checks,
+  low-balance key, bounded coverage-safe paging keyed by GitHub's durable
+  workflow-run ordinal, preflight affordability checks,
   simulation, and receipt-event verification. It is not a live-uptime claim
   until the reviewed workflow runs from the default branch and the dedicated
   key records a receipt. GitHub Actions scheduling remains best-effort and is
-  not a precise-cadence guarantee. The shell keeper remains read-only by default.
+  not a precise-cadence guarantee; delayed or missed schedule slots do not alter
+  which page the next invocation scans. The shell keeper remains read-only by default.
 - The client-side entitlement route is a reference integration, not a secure
   content boundary. A production merchant must authenticate the subscriber
   wallet and enforce entitlement server-side.

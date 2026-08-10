@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Address } from "viem";
 import { buildAtomicSubscribePreview } from "../src/preflight.js";
 import { buildCancelWithdrawPreview } from "../src/control.js";
+import { STANDING_V2_CAPABILITY } from "../src/standing-v2.js";
 
 const address = (digit: string) => `0x${digit.repeat(40)}` as Address;
 
@@ -15,6 +16,7 @@ describe("V2 subscription preflight", () => {
     const merchant = address("6");
     const client = {
       readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "standingIdentity") return [2n, STANDING_V2_CAPABILITY] as const;
         if (request.functionName === "getContractAddressByName") {
           return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
         }
@@ -57,6 +59,7 @@ describe("V2 subscription preflight", () => {
     const adapter = address("7");
     const client = {
       readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "standingIdentity") return [2n, STANDING_V2_CAPABILITY] as const;
         if (request.functionName === "getContractAddressByName") {
           return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
         }
@@ -95,6 +98,42 @@ describe("V2 subscription preflight", () => {
     });
     await expect(buildAtomicSubscribePreview({ ...base, maxInitialChargeFxrp: "0.149999" })).rejects.toThrow("below the quoted first charge");
   });
+
+  it("fails closed on the current V1 shape before resolving any payment dependency", async () => {
+    const client = {
+      readContract: vi.fn(async (request: { functionName: string }) => {
+        if (request.functionName === "standingIdentity") throw new Error("function returned no data");
+        throw new Error(`unexpected read ${request.functionName}`);
+      }),
+    };
+
+    await expect(buildAtomicSubscribePreview({
+      xrplAddress: "r9cZA1mLK5R5Am25ArfXFmqgNwjZgnfk59",
+      planId: 4n,
+      deposit: "1",
+      maxInitialChargeFxrp: "0.2",
+      standing: address("5"),
+      client: client as never,
+    })).rejects.toThrow("does not expose the required V2 identity");
+    expect(client.readContract).toHaveBeenCalledTimes(1);
+    expect(client.readContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: "standingIdentity" }));
+  });
+
+  it("rejects a deployment that returns the wrong V2 capability", async () => {
+    const client = {
+      readContract: vi.fn(async () => [2n, `0x${"00".repeat(32)}`] as const),
+    };
+
+    await expect(buildAtomicSubscribePreview({
+      xrplAddress: "r9cZA1mLK5R5Am25ArfXFmqgNwjZgnfk59",
+      planId: 4n,
+      deposit: "1",
+      maxInitialChargeFxrp: "0.2",
+      standing: address("5"),
+      client: client as never,
+    })).rejects.toThrow("has an incompatible identity");
+    expect(client.readContract).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("cancel-withdraw preflight", () => {
@@ -107,6 +146,7 @@ describe("cancel-withdraw preflight", () => {
     const merchant = address("6");
     const client = {
       readContract: vi.fn(async (request: { functionName: string; args?: readonly unknown[] }) => {
+        if (request.functionName === "standingIdentity") return [2n, STANDING_V2_CAPABILITY] as const;
         if (request.functionName === "getContractAddressByName") {
           return request.args?.[0] === "MasterAccountController" ? controller : assetManager;
         }
@@ -138,5 +178,24 @@ describe("cancel-withdraw preflight", () => {
     expect(preview.control.reviewWarning).toContain("does not return native XRP to the XRPL address");
     expect(preview.instruction.calls).toHaveLength(1);
     expect(preview.readiness).toBe("READY");
+  });
+
+  it("fails closed on a V1 mandate before constructing a cancellation payment", async () => {
+    const client = {
+      readContract: vi.fn(async (request: { functionName: string }) => {
+        if (request.functionName === "standingIdentity") throw new Error("function returned no data");
+        throw new Error(`unexpected read ${request.functionName}`);
+      }),
+    };
+
+    await expect(buildCancelWithdrawPreview({
+      xrplAddress: "r9cZA1mLK5R5Am25ArfXFmqgNwjZgnfk59",
+      mandateId: 5n,
+      authorizationMint: "0.1",
+      standing: address("5"),
+      client: client as never,
+    })).rejects.toThrow("does not expose the required V2 identity");
+    expect(client.readContract).toHaveBeenCalledTimes(1);
+    expect(client.readContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: "standingIdentity" }));
   });
 });

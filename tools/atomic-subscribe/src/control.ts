@@ -14,6 +14,7 @@ import {
   encodeHashInstruction,
   parseDeposit,
 } from "./protocol.js";
+import { requireStandingV2 } from "./standing-v2.js";
 
 export type AtomicCancelWithdrawPreview = {
   operation: "CANCEL_WITHDRAW";
@@ -85,6 +86,7 @@ export async function buildCancelWithdrawPreview(input: {
 
   const client = input.client ?? createPublicClient({ chain: coston2, transport: http(process.env.COSTON2_RPC_URL) });
   const standing = getAddress(input.standing);
+  await requireStandingV2(client, standing);
   const [controller, assetManager] = await Promise.all([
     client.readContract({
       address: registryAddress,

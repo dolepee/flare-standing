@@ -35,4 +35,7 @@ jobs:
           COSTON2_RPC: https://coston2-api.flare.network/ext/C/rpc
           STANDING_ADDRESS: ${{ vars.STANDING_ADDRESS }}
           KEEPER_PRIVATE_KEY: ${{ secrets.COSTON2_KEEPER_PRIVATE_KEY }}
+          # A workflow invocation ordinal, unlike wall-clock time, advances once
+          # per actual run even when best-effort schedules are delayed or missed.
+          KEEPER_SCAN_CURSOR: ${{ github.run_number }}
         run: npm start

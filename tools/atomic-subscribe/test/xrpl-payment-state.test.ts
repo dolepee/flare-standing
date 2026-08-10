@@ -175,6 +175,7 @@ describe("durable XRPL payment state", () => {
               if (crashDuringSign) throw new Error("simulated crash after signing, before persistence");
               return signed;
             },
+            getValidatedLedgerIndex: async () => 99,
             lookupTransaction: async () => null,
             broadcastAndWait: async () => success(value.signed.hash),
           });
@@ -188,6 +189,79 @@ describe("durable XRPL payment state", () => {
         expect(prepares).toBe(1);
         expect(signs).toBe(2);
         expect(signedBlobs[0]).toBe(signedBlobs[1]);
+      } finally {
+        await rm(value.directory, { recursive: true, force: true });
+      }
+    });
+
+    it("rebuilds an expired PREPARED transaction after a crash without reusing stale bytes", async () => {
+      const value = await fixture(operation);
+      const replacementTransaction: Payment = {
+        ...value.transaction,
+        Sequence: 2,
+        LastLedgerSequence: 200,
+      };
+      const replacementSigned = value.wallet.sign(replacementTransaction);
+      let prepares = 0;
+      let signs = 0;
+      const signedBlobs: string[] = [];
+      let crashDuringReplacementSign = true;
+      let ledgerReads = 0;
+      let broadcasts = 0;
+      try {
+        const run = () =>
+          runDurableXrplPayment<Payment>({
+            preview: value.preview,
+            outputBasePath: value.outputBasePath,
+            validateBeforeSigning: async () => undefined,
+            prepareTransaction: async () => {
+              prepares += 1;
+              return prepares === 1 ? value.transaction : replacementTransaction;
+            },
+            signTransaction: (transaction) => {
+              signs += 1;
+              const signed = value.wallet.sign(transaction);
+              signedBlobs.push(signed.tx_blob);
+              if (crashDuringReplacementSign) throw new Error("simulated crash after replacement signing");
+              return signed;
+            },
+            getValidatedLedgerIndex: async () => {
+              ledgerReads += 1;
+              if (ledgerReads === 1) throw new Error("simulated crash before signing");
+              return 101;
+            },
+            lookupTransaction: async () => null,
+            broadcastAndWait: async (blob) => {
+              broadcasts += 1;
+              expect(blob).toBe(replacementSigned.tx_blob);
+              expect(blob).not.toBe(value.signed.tx_blob);
+              return success(replacementSigned.hash);
+            },
+          });
+
+        await expect(run()).rejects.toThrow("simulated crash before signing");
+        const statePath = xrplPaymentStatePath(value.outputBasePath, value.preview.instruction.userOperationHash);
+        const crashedState = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(crashedState.phase).toBe("PREPARED");
+        if (crashedState.phase === "PREPARED") {
+          expect(crashedState.preparedTransaction.LastLedgerSequence).toBe(100);
+        }
+
+        await expect(run()).rejects.toThrow("simulated crash after replacement signing");
+        const refreshedState = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(refreshedState.phase).toBe("PREPARED");
+        expect(refreshedState.preparedTransaction.LastLedgerSequence).toBe(200);
+
+        crashDuringReplacementSign = false;
+        const completed = await run();
+        expect(completed.xrplTransactionHash).toBe(replacementSigned.hash);
+        expect(prepares).toBe(2);
+        expect(signs).toBe(2);
+        expect(signedBlobs).toEqual([replacementSigned.tx_blob, replacementSigned.tx_blob]);
+        expect(broadcasts).toBe(1);
+        const completedState = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(completedState.phase).toBe("VALIDATED");
+        expect(completedState.preparedTransaction.LastLedgerSequence).toBe(200);
       } finally {
         await rm(value.directory, { recursive: true, force: true });
       }
@@ -213,6 +287,7 @@ describe("durable XRPL payment state", () => {
               signs += 1;
               return value.wallet.sign(transaction);
             },
+            getValidatedLedgerIndex: async () => 99,
             lookupTransaction: async () => {
               if (crashBeforeBroadcast) throw new Error("simulated crash before broadcast");
               return null;
@@ -240,11 +315,12 @@ describe("durable XRPL payment state", () => {
       }
     });
 
-    it("reconciles an accepted payment after the broadcast response is lost", async () => {
+    it("preserves an expired SIGNED transaction and refuses to replace or rebroadcast it", async () => {
       const value = await fixture(operation);
-      const ledger = new Map<string, XrplTransactionOutcome>();
       let prepares = 0;
       let signs = 0;
+      let currentLedger = 99;
+      let crashBeforeBroadcast = true;
       let broadcasts = 0;
       try {
         const run = () =>
@@ -260,6 +336,61 @@ describe("durable XRPL payment state", () => {
               signs += 1;
               return value.wallet.sign(transaction);
             },
+            getValidatedLedgerIndex: async () => currentLedger,
+            lookupTransaction: async () => {
+              if (crashBeforeBroadcast) throw new Error("simulated crash before broadcast");
+              return null;
+            },
+            broadcastAndWait: async () => {
+              broadcasts += 1;
+              throw new Error("expired signed bytes must not be rebroadcast");
+            },
+          });
+
+        await expect(run()).rejects.toThrow("simulated crash before broadcast");
+        const statePath = xrplPaymentStatePath(value.outputBasePath, value.preview.instruction.userOperationHash);
+        const signedBeforeExpiry = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(signedBeforeExpiry.phase).toBe("SIGNED");
+        if (signedBeforeExpiry.phase === "SIGNED") {
+          expect(signedBeforeExpiry.signedTransactionBlob).toBe(value.signed.tx_blob);
+        }
+
+        crashBeforeBroadcast = false;
+        currentLedger = 101;
+        await expect(run()).rejects.toThrow(/persisted SIGNED XRPL transaction .* expired at ledger 100/);
+
+        const signedAfterExpiry = await readJson<XrplPaymentState<Payment>>(statePath);
+        expect(signedAfterExpiry).toEqual(signedBeforeExpiry);
+        expect(prepares).toBe(1);
+        expect(signs).toBe(1);
+        expect(broadcasts).toBe(0);
+      } finally {
+        await rm(value.directory, { recursive: true, force: true });
+      }
+    });
+
+    it("reconciles an accepted payment after the broadcast response is lost even after expiry", async () => {
+      const value = await fixture(operation);
+      const ledger = new Map<string, XrplTransactionOutcome>();
+      let prepares = 0;
+      let signs = 0;
+      let broadcasts = 0;
+      let currentLedger = 99;
+      try {
+        const run = () =>
+          runDurableXrplPayment<Payment>({
+            preview: value.preview,
+            outputBasePath: value.outputBasePath,
+            validateBeforeSigning: async () => undefined,
+            prepareTransaction: async () => {
+              prepares += 1;
+              return value.transaction;
+            },
+            signTransaction: (transaction) => {
+              signs += 1;
+              return value.wallet.sign(transaction);
+            },
+            getValidatedLedgerIndex: async () => currentLedger,
             lookupTransaction: async (hash) => ledger.get(hash) ?? null,
             broadcastAndWait: async (blob) => {
               broadcasts += 1;
@@ -270,6 +401,7 @@ describe("durable XRPL payment state", () => {
           });
 
         await expect(run()).rejects.toThrow("simulated lost response");
+        currentLedger = 101;
         const recovered = await run();
         expect(recovered.resumed).toBe(true);
         expect(prepares).toBe(1);
@@ -297,6 +429,7 @@ describe("durable XRPL payment state", () => {
               signs += 1;
               return value.wallet.sign(transaction);
             },
+            getValidatedLedgerIndex: async () => 99,
             lookupTransaction: async () => null,
             broadcastAndWait: async (blob) => {
               blobs.push(blob);
@@ -327,6 +460,7 @@ describe("durable XRPL payment state", () => {
             validateBeforeSigning: async () => undefined,
             prepareTransaction: async () => value.transaction,
             signTransaction: (transaction) => value.wallet.sign(transaction),
+            getValidatedLedgerIndex: async () => 99,
             lookupTransaction: async () => {
               lookups += 1;
               return null;
@@ -357,6 +491,7 @@ describe("durable XRPL payment state", () => {
           validateBeforeSigning: async () => undefined,
           prepareTransaction: async () => value.transaction,
           signTransaction: (transaction: Payment) => value.wallet.sign(transaction),
+          getValidatedLedgerIndex: async () => 99,
           lookupTransaction: async () => null,
           broadcastAndWait: async () => success(value.signed.hash),
         };

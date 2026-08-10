@@ -85,10 +85,13 @@ remaining balance exceeds its recorded deposits.
 ## Keeper operation
 
 `tools/keeper` is the candidate hosted Coston2 keeper. It verifies chain ID 114, pages
-through public mandate state, withholds known-underfunded charges, simulates
+through public mandate state using GitHub's durable workflow-run ordinal, withholds known-underfunded charges, simulates
 every candidate, and accepts success only when the receipt contains the bound
 `ChargeExecuted` event. Per-mandate failures are isolated so one bad item does
-not prevent later mandates from being checked. The scheduled GitHub Actions
+not prevent later mandates in the page from being checked. Because paging advances
+per actual invocation rather than per wall-clock slot, a delayed or missed schedule
+cannot permanently omit a page. Oversized local scans fail closed unless the operator
+provides a non-negative `KEEPER_SCAN_CURSOR`. The scheduled GitHub Actions
 worker is configured for a dedicated low-balance Coston2 key and never receives
 custody. It is not a live-uptime claim until the reviewed workflow runs from the
 default branch and that key records a charge receipt.

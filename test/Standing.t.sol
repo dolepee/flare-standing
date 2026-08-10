@@ -32,6 +32,12 @@ contract StandingTest is Test {
         planId = standing.createPlan(priceUsdMicro, 0, 60, MERCHANT);
     }
 
+    function test_StandingIdentityPinsV2Capabilities() public view {
+        (uint256 version, bytes32 capability) = standing.standingIdentity();
+        assertEq(version, 2);
+        assertEq(capability, keccak256("standing.mandates.v2.open-and-charge.cancel-and-withdraw-exact"));
+    }
+
     function test_OpenPlanAndChargeFlow() public {
         uint256 planId = _createUsdPlan(2_500_000);
         token.approve(address(standing), CHARGE_USEC * 10);

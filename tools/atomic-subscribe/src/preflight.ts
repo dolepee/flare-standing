@@ -15,6 +15,7 @@ import {
   encodeHashInstruction,
   parseDeposit,
 } from "./protocol.js";
+import { requireStandingV2 } from "./standing-v2.js";
 
 export type AtomicSubscribePreview = {
   operation: "SUBSCRIBE_V2";
@@ -91,6 +92,7 @@ export async function buildAtomicSubscribePreview(input: {
 
   const client = input.client ?? createCoston2Client();
   const standing = getAddress(input.standing);
+  await requireStandingV2(client, standing);
   const [masterAccountController, assetManager] = await Promise.all([
     client.readContract({
       address: registryAddress,

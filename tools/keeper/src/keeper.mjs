@@ -94,7 +94,7 @@ export async function runKeeper({
   walletClient,
   standing,
   maxMandatesPerRun = 500n,
-  pageSeconds = 300n,
+  scanCursor,
   log = emit,
   parseLogs = (logs) => parseEventLogs({ abi: standingAbi, logs, strict: false }),
 }) {
@@ -109,9 +109,12 @@ export async function runKeeper({
     return { scanned: 0, submitted: 0, skipped: 0 }
   }
 
-  if (maxMandatesPerRun <= 0n || pageSeconds <= 0n) throw new Error('keeper paging configuration must be positive')
+  if (maxMandatesPerRun <= 0n) throw new Error('keeper page size must be positive')
   const pageCount = count === 0n ? 1n : (count + maxMandatesPerRun - 1n) / maxMandatesPerRun
-  const page = count === 0n ? 0n : (block.timestamp / pageSeconds) % pageCount
+  if (pageCount > 1n && (typeof scanCursor !== 'bigint' || scanCursor < 0n)) {
+    throw new Error('KEEPER_SCAN_CURSOR must be a non-negative integer when mandate paging is required')
+  }
+  const page = pageCount === 1n ? 0n : scanCursor % pageCount
   const firstMandateId = page * maxMandatesPerRun + 1n
   const lastMandateId = count < firstMandateId + maxMandatesPerRun - 1n
     ? count
@@ -120,6 +123,7 @@ export async function runKeeper({
     log('scan_page_selected', {
       page: page.toString(),
       pageCount: pageCount.toString(),
+      scanCursor: scanCursor.toString(),
       firstMandateId: firstMandateId.toString(),
       lastMandateId: lastMandateId.toString(),
       mandateCount: count.toString(),
@@ -254,12 +258,17 @@ async function main() {
   const standing = getAddress(process.env.STANDING_ADDRESS ?? '')
   const rpc = process.env.COSTON2_RPC ?? coston2.rpcUrls.default.http[0]
   const account = privateKeyToAccount(key)
+  const rawScanCursor = process.env.KEEPER_SCAN_CURSOR
+  if (rawScanCursor !== undefined && !/^\d+$/.test(rawScanCursor)) {
+    throw new Error('KEEPER_SCAN_CURSOR must be a non-negative integer')
+  }
+  const scanCursor = rawScanCursor === undefined ? undefined : BigInt(rawScanCursor)
   const transport = http(rpc, { retryCount: 3, timeout: 20_000 })
   const publicClient = createPublicClient({ chain: coston2, transport })
   const walletClient = createWalletClient({ account, chain: coston2, transport })
   const chainId = await publicClient.getChainId()
   if (chainId !== coston2.id) throw new Error(`refusing keeper on chain ${chainId}; expected ${coston2.id}`)
-  await runKeeper({ publicClient, walletClient, standing })
+  await runKeeper({ publicClient, walletClient, standing, scanCursor })
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -68,9 +68,9 @@ try {
         maxInitialChargeFxrp: preview.maxInitialChargeFxrp.display,
         standing: preview.standing,
       });
-      // This check intentionally runs only before the first transaction is
-      // prepared. A resume must recover the irreversible signed payment even
-      // if later Flare state has moved on.
+      // This check runs before any PREPARED transaction is signed, including
+      // a resumed or expiry-refreshed one. Once SIGNED is durable, recovery
+      // never substitutes new bytes even if later Flare state has moved on.
       assertFreshPreviewMatches(preview, fresh);
       const balanceDrops = BigInt(xrpToDrops(await client.getXrpBalance(wallet.address)));
       const paymentDrops = BigInt(preview.payment.totalPaymentUBA);
@@ -90,6 +90,7 @@ try {
       return transaction;
     },
     signTransaction: (transaction) => wallet.sign(transaction),
+    getValidatedLedgerIndex: () => client.getLedgerIndex(),
     lookupTransaction: async (hash) => {
       try {
         return transactionOutcome(await client.request({ command: "tx", transaction: hash }));

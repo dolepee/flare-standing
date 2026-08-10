@@ -84,6 +84,16 @@ export const assetManagerAbi = [
 export const standingAbi = [
   {
     type: "function",
+    name: "standingIdentity",
+    stateMutability: "pure",
+    inputs: [],
+    outputs: [
+      { name: "version", type: "uint256" },
+      { name: "capability", type: "bytes32" },
+    ],
+  },
+  {
+    type: "function",
     name: "paused",
     stateMutability: "view",
     inputs: [],
