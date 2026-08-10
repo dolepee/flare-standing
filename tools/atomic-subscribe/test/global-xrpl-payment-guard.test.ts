@@ -177,6 +177,31 @@ describe("global cross-host XRPL payment guard", () => {
     })).rejects.toThrow("recover/import that payment instead of signing another");
   });
 
+  it("does not skip an executor-eligible first FE memo with optional fields or later memos", async () => {
+    const prior = successfulEntry({
+      hash: "8".repeat(64),
+      ledgerIndex: 300,
+      memoData: feMemo(currentOperationHash),
+    });
+    const transaction = prior.tx_json as Record<string, unknown>;
+    transaction.Memos = [
+      {
+        Memo: {
+          MemoData: feMemo(currentOperationHash),
+          MemoType: "7374616E64696E67",
+          MemoFormat: "686578",
+        },
+      },
+      { Memo: { MemoData: "00" } },
+    ];
+
+    await expect(assertNoUnresolvedGlobalXrplPayment({
+      historyClient: new HistoryClient([creationEntry, prior]),
+      preview,
+      isTransactionIdUsed: async () => false,
+    })).rejects.toThrow("recover/import that payment instead of signing another");
+  });
+
   it("fails closed when the account existed at the history lower bound", async () => {
     await expect(assertNoUnresolvedGlobalXrplPayment({
       historyClient: new HistoryClient([creationEntry], { completeness: "present" }),

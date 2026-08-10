@@ -177,12 +177,15 @@ function transactionResult(meta: Record<string, unknown>): string {
   return result;
 }
 
-function canonicalFeMemo(tx: Record<string, unknown>): string | null {
-  if (!Array.isArray(tx.Memos) || tx.Memos.length !== 1) return null;
+function executorEligibleFeMemo(tx: Record<string, unknown>): string | null {
+  // FDC and execute.ts bind the first memo's MemoData. Extra memos and the
+  // optional MemoType/MemoFormat fields do not make that first memo
+  // ineligible, so the cross-host guard must conservatively scan them too.
+  if (!Array.isArray(tx.Memos) || tx.Memos.length === 0) return null;
   const wrapper = record(tx.Memos[0], "XRPL memo wrapper");
-  if (Object.keys(wrapper).length !== 1 || !("Memo" in wrapper)) return null;
+  if (!("Memo" in wrapper)) return null;
   const memo = record(wrapper.Memo, "XRPL memo");
-  if (Object.keys(memo).length !== 1 || typeof memo.MemoData !== "string") return null;
+  if (typeof memo.MemoData !== "string") return null;
   const value = memo.MemoData.toUpperCase();
   return MEMO_PATTERN.test(value) ? value : null;
 }
@@ -276,7 +279,7 @@ export async function assertNoUnresolvedGlobalXrplPayment(input: {
       ) {
         continue;
       }
-      const memoData = canonicalFeMemo(tx);
+      const memoData = executorEligibleFeMemo(tx);
       if (memoData === null) continue;
       matchingPayments += 1;
 
