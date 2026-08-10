@@ -43,6 +43,17 @@ export const erc20Abi = parseAbi([
   'function symbol() view returns (string)',
 ])
 
+// Intentionally excludes every legacy acquisition, keeper, and merchant write.
+// This ABI is the recovery lane's second line of defense after UI ownership gates.
+export const historicalV1RecoveryAbi = parseAbi([
+  'function planCount() view returns (uint256)',
+  'function mandateCount() view returns (uint256)',
+  'function plans(uint256) view returns (address merchant, uint256 priceUsdMicro, uint256 priceFxrp, uint32 periodSeconds, bool active)',
+  'function mandates(uint256) view returns (uint256 planId, address subscriber, uint256 deposited, uint256 remaining, uint256 nextChargeAt, uint256 lastChargeAt, bool canceled)',
+  'function cancel(uint256 mandateId)',
+  'function withdrawMandate(uint256 mandateId)',
+])
+
 export type StandingPlan = {
   id: bigint
   merchant: `0x${string}`

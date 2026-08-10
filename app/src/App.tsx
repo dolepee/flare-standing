@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { AccessPage } from './pages/AccessPage'
 import { CheckoutPage } from './pages/CheckoutPage'
 import { EvidencePage } from './pages/EvidencePage'
+import { LegacyRecoveryPage } from './pages/LegacyRecoveryPage'
 import { MandatesPage } from './pages/MandatesPage'
 import { MerchantPage } from './pages/MerchantPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -25,6 +26,7 @@ export default function App() {
               <Route path="access/:mandateId" element={<AccessPage />} />
               <Route path="merchant" element={<MerchantPage />} />
               <Route path="evidence" element={<EvidencePage />} />
+              <Route path="legacy-recovery" element={<LegacyRecoveryPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Routes>

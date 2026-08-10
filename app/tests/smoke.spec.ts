@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-for (const path of ['/', '/plans', '/checkout/1', '/mandates', '/access/1', '/merchant', '/evidence']) {
+for (const path of ['/', '/plans', '/checkout/1', '/mandates', '/access/1', '/merchant', '/evidence', '/legacy-recovery']) {
   test(`${path} renders without horizontal overflow`, async ({ page }) => {
     const errors: string[] = []
     const failedRequests: string[] = []
@@ -67,6 +67,47 @@ test('merchant capability stays discoverable without occupying primary navigatio
   await page.goto('/plans')
   await expect(page.getByRole('link', { name: 'Merchant testnet tools' })).toHaveAttribute('href', '/merchant')
   await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: /Merchant/ })).toHaveCount(0)
+})
+
+test('historical V1 recovery is linked but excluded from primary navigation', async ({ page }) => {
+  await page.goto('/mandates')
+  await expect(page.getByRole('link', { name: 'Historical V1 recovery' })).toHaveAttribute('href', '/legacy-recovery')
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: /Historical V1 recovery/ })).toHaveCount(0)
+
+  await page.goto('/evidence')
+  await expect(page.getByRole('link', { name: 'Historical V1 recovery' })).toHaveAttribute('href', '/legacy-recovery')
+})
+
+test('historical recovery defaults to V1 read-only state with no forbidden controls', async ({ page }) => {
+  await page.goto('/legacy-recovery')
+  await expect(page.getByRole('heading', { name: 'Exit an old mandate without reopening it.' })).toBeVisible()
+  await expect(page.getByText(/cannot recover XRPL-derived Personal or Smart Accounts/i)).toBeVisible()
+  await expect(page.getByText('0x8a29c741280554028d76666dc75558d98caab855')).toBeVisible()
+  await expect(page.getByRole('link', { name: /Inspect V1 contract/ })).toHaveAttribute('href', /0x8a29c741280554028d76666dc75558d98caab855$/i)
+  await expect(page.getByText('Historical V1 mandate #5')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Open mandate|Top up|Run charge|Create plan|Withdraw merchant/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Cancel V1 mandate|Withdraw canceled balance/i })).toHaveCount(0)
+})
+
+test('historical recovery does not misrepresent the funded Personal Account as browser-recoverable', async ({ page }) => {
+  await page.addInitScript(() => {
+    const account = '0x230068eE8262BE1A7DF36f55Ebb17F64Cc8F7890'
+    window.ethereum = {
+      request: async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [account]
+        if (method === 'eth_chainId') return '0x72'
+        throw new Error(`Unexpected wallet method: ${method}`)
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    }
+  })
+  await page.goto('/legacy-recovery')
+  await expect(page.getByText('Coston2 ready')).toBeVisible()
+  await expect(page.getByText('Personal Account · read only')).toBeVisible()
+  await expect(page.getByText(/browser EOA cannot recover it/i)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Cancel V1 mandate|Withdraw canceled balance/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Open mandate|Top up|Run charge|Create plan|Withdraw merchant/i })).toHaveCount(0)
 })
 
 test('the verified mandate has a direct subscriber-access surface', async ({ page }) => {

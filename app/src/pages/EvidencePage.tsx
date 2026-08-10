@@ -31,12 +31,15 @@ export function EvidencePage() {
           <h1>Inspect every proof at its source.</h1>
           <p>The primary claim is narrow: one validated XRPL Testnet payment and one successful Coston2 transaction direct-minted FTestXRP, opened mandate 1, and paid its first cycle. Identity statements stay separate from what chain state proves.</p>
         </div>
-        <Link className="button button-primary" to="/#verified-replay">Open interactive replay</Link>
+        <div className="heading-actions">
+          <Link className="button button-primary" to="/#verified-replay">Open interactive replay</Link>
+          <Link className="button button-secondary" to="/legacy-recovery">Historical V1 recovery</Link>
+        </div>
       </section>
 
       <section className="receipt-boundary" aria-label="Proof and checkout boundary">
         <div><strong>Verified XRP path</strong><span>Fresh public V2 receipts plus the latest read of mandate 1. No wallet or writes.</span></div>
-        <div><strong>Live browser checkout</strong><span>A separate Coston2 testnet path uses existing FTestXRP to open and charge atomically.</span></div>
+        <div><strong>Live V2 + bounded V1 recovery</strong><span>New actions use V2. Historical V1 is isolated to subscriber cancellation and canceled-balance withdrawal.</span><Link className="text-link" to="/legacy-recovery">Open recovery route</Link></div>
       </section>
 
       <section className="proof-layout">
