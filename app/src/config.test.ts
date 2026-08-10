@@ -15,8 +15,8 @@ describe('Coston2 chain configuration', () => {
     expect(isAddress(FTSO_ADAPTER_ADDRESS)).toBe(true)
   })
 
-  it('keeps V2 writes disabled while the configured address is the V1 deployment', () => {
-    expect(STANDING_ADDRESS).toBe('0x8a29c741280554028d76666dc75558d98caab855')
-    expect(V2_CHECKOUT_DEPLOYED).toBe(false)
+  it('binds browser writes to the verified V2 deployment', () => {
+    expect(STANDING_ADDRESS).toBe('0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7')
+    expect(V2_CHECKOUT_DEPLOYED).toBe(true)
   })
 })

@@ -17,18 +17,19 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - [x] One XRPL testnet direct-mint path completed and timed
 - [x] Smart Accounts/direct-mint path executed on Coston2
 - [x] External merchant and subscriber booked for the controlled Coston2 pilot
+- [x] Reviewed V2 deployed and a fresh XRP payment opened and charged mandate 1 atomically
 
 ## Current notes
 
 - Contract scaffold and tests are in place (`src/StandingMandates.sol`, `script/*.s.sol`, `test/Standing.t.sol`).
-- Candidate V2 local gates are complete as of 2026-08-10:
+- Reviewed V2 release gates are complete as of 2026-08-10:
   - `forge fmt` ✅
   - `forge build` ✅
   - `forge test` ✅ (38/38 passing, including 2 stateful invariants with 256 runs and 128,000 calls each)
   - `forge coverage --report lcov` ✅
   - `cd app && npm test` ✅ (22/22 passing)
   - `cd app && npm run test:browser` ✅ (38/38 desktop/mobile on a verified free port)
-  - `cd tools/atomic-subscribe && npm test` ✅ (52/52 passing)
+  - `cd tools/atomic-subscribe && npm test` ✅ (109/109 passing)
   - `cd tools/keeper && npm test` ✅ (17/17 passing, including hard work budgets, queued 1,001-mandate coverage, post-broadcast reconciliation, and pathological-receipt tail rotation)
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
@@ -58,6 +59,52 @@ This proves V1 commit `b5ab700`/deployment source equivalence. Candidate V2
 changes made after that commit are not deployed by this evidence. It is not a claim that
 the explorer has published or independently verified the source; Blockscout
 source publication remains a release operation.
+
+### Current reviewed V2 deployment and immediate-value proof
+
+On 2026-08-10, exact source head `ea1cf65` passed all nine GitHub checks and a
+focused installed-Codex review of the final legacy-recovery increment. The
+deployment exposes version `2` and capability
+`0x95b0f893ac5f1434738e3ebdeada0989770f34f6b1c9bce29e2f2534a7ba1e81`.
+
+- Standing V2: `0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7`
+  - deployment: `0xa0f4d5f5456a2661ad1cb239edb14a7117f7961d6ca2b6392460b27c9a6b53a5`
+  - block: `33892942`
+  - FXRP: `0x0b6A3645c240605887a5532109323A3E12273dc7`
+  - price adapter: `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8`
+  - fee: `100` bps; maximum price age: `300` seconds
+- Fixed plan 1: `0.1 FTestXRP` every `600` seconds
+  - creation: `0x06c0bfc5ecd8cb12327ad15b658d15bc328c0087644c5b2a57a97fbe6c28b2c0`
+- XRPL Testnet authorization:
+  `54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD`
+  - validated `tesSUCCESS` in ledger `19,802,686`
+  - amount: `1,200,000` drops (`1.2 XRP`)
+  - destination tag: none
+  - exactly one canonical `42`-byte `0xFE` memo
+- Atomic Coston2 execution:
+  `0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9`
+  - receipt status: success; block `33,893,083`
+  - mandate 1, plan 1, subscriber
+    `0x230068eE8262BE1A7DF36f55Ebb17F64Cc8F7890`
+  - deposited: `1,000,000` atomic FTestXRP
+  - first gross charge: `100,000` atomic FTestXRP
+  - merchant credit: `99,000`; protocol fee: `1,000`
+  - remaining recurring capacity: `900,000`
+  - first charge: `2026-08-10T21:47:47Z`
+  - next charge: `2026-08-10T21:57:47Z`
+- First autonomous recurrence:
+  `0x8c3333505617ef62e2b2823cb0c95ce4ee81a6e601e80978b285865f94d5a2a9`
+  - receipt status: success; block `33,893,456`
+  - sender: dedicated keeper
+    `0x232C36580360d3E717fc1A583cDd5bEe0fEE7D7D`
+  - merchant credit: `99,000`; protocol fee: `1,000`
+  - remaining recurring capacity: `800,000`
+  - last charge: `2026-08-10T21:58:13Z`
+  - next charge: `2026-08-10T22:08:13Z`
+
+This is the current primary proof: one XRP payment produced an immediately
+useful paid subscription state on Flare. It is controlled-builder testnet
+evidence, not mainnet usage, production revenue, or external adoption.
 
 ### Historical spike deployment (historical proof path)
 
@@ -265,6 +312,9 @@ gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`)
 
 ### Gate status
 
+- The reviewed V2 deployment is live and its fresh atomic proof completed the
+  full immediate-value path: XRPL payment, FDC proof, direct mint, mandate open,
+  and first charge in one Coston2 execution.
 - Historical proof remains useful for the insufficient-balance keeper path.
 - The deployed V1 proof contract proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
 - The Coston2 contract, live FTSO, and XRPL-to-Coston2 direct-mint portions of

@@ -20,7 +20,7 @@ export function PlansPage() {
   return (
     <div className="page">
       <section className="page-heading">
-        <div><span className="eyebrow">Browser lane · Coston2 testnet · V2 deploy pending</span><h1>Review a separate atomic checkout.</h1><p>These are public onchain plans. The prepared V2 flow will open and charge in one final transaction, but writes stay disabled while the configured address is the verified V1 deployment.</p></div>
+        <div><span className="eyebrow">Live V2 browser lane · Coston2 testnet</span><h1>Open with the first cycle already paid.</h1><p>Review the onchain plan, choose bounded prepaid capacity, then open the mandate and charge its first cycle in one Coston2 transaction.</p></div>
         <Link className="button button-secondary" to="/merchant">Merchant testnet tools</Link>
       </section>
       <Coston2Setup />

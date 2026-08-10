@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { decodeEventLog } from 'viem'
 import { Coston2Setup } from '../components/Coston2Setup'
 import { Status } from '../components/Status'
-import { FXRP_ADDRESS, STANDING_ADDRESS, V2_CHECKOUT_DEPLOYED } from '../config'
+import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import { erc20Abi, standingAbi } from '../contracts'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
@@ -49,7 +49,6 @@ export function CheckoutPage() {
   }, [amount, plan, reviewedCeiling])
 
   async function subscribe() {
-    if (!V2_CHECKOUT_DEPLOYED) throw new Error('V2 checkout deployment is not enabled')
     if (!plan || amount <= 0n || initialChargeSelection.error || initialChargeSelection.ceiling <= 0n) return
     if (state.walletAllowance < amount) {
       await execute({
@@ -120,17 +119,15 @@ export function CheckoutPage() {
   const invalidDeposit = deposit.trim().length > 0 && amount <= 0n
   const requiresReviewedCeiling = plan.priceUsdMicro > 0n
   const invalidInitialCharge = Boolean(initialChargeSelection.error)
-  const checkoutHelp = !V2_CHECKOUT_DEPLOYED
-    ? 'The configured address is the verified V1 deployment. No legacy pending-only open will be submitted; checkout unlocks only after a reviewed V2 deployment.'
-    : insufficientBalance
-      ? 'Your wallet needs more FTestXRP. Use the official faucet above, then refresh.'
-      : invalidDeposit
-        ? 'Enter a positive FTestXRP capacity.'
-        : initialChargeSelection.error
-          ? initialChargeSelection.error
-          : state.walletAllowance < amount
-            ? 'Two confirmations: FTestXRP approval, then one atomic open-and-initial-charge transaction.'
-            : 'One Coston2 transaction opens the mandate and charges its first cycle immediately.'
+  const checkoutHelp = insufficientBalance
+    ? 'Your wallet needs more FTestXRP. Use the official faucet above, then refresh.'
+    : invalidDeposit
+      ? 'Enter a positive FTestXRP capacity.'
+      : initialChargeSelection.error
+        ? initialChargeSelection.error
+        : state.walletAllowance < amount
+          ? 'Two confirmations: FTestXRP approval, then one atomic open-and-initial-charge transaction.'
+          : 'One Coston2 transaction opens the mandate and charges its first cycle immediately.'
 
   return (
     <div className="page checkout-page">
@@ -141,7 +138,7 @@ export function CheckoutPage() {
           <div className="checkout-title-row">
             <span className="eyebrow">{profile.merchantName}</span>
             <Status tone="muted">Coston2 testnet</Status>
-            <Status tone="warning">V2 deploy pending</Status>
+            <Status tone="good">V2 live</Status>
             {profile.operatorControlled ? <Status tone="muted">Controlled fixture</Status> : null}
           </div>
           <h1>{profile.name}</h1>
@@ -156,8 +153,8 @@ export function CheckoutPage() {
           </div>
         </div>
         <aside className="checkout-panel">
-          <div className="section-title"><div><span className="eyebrow">V2 browser checkout</span><h2>Prepared open-and-charge flow</h2></div><WalletCards aria-hidden="true" /></div>
-          <p>The final V2 transaction must both open the test mandate and emit its first ChargeExecuted event. Unused FTestXRP remains cancelable and recoverable.</p>
+          <div className="section-title"><div><span className="eyebrow">V2 browser checkout</span><h2>Open with access paid</h2></div><WalletCards aria-hidden="true" /></div>
+          <p>The transaction must both open the test mandate and emit its first ChargeExecuted event. Unused FTestXRP remains cancelable and recoverable.</p>
           <label htmlFor="checkout-deposit">Prepaid capacity</label>
           <div className="input-with-unit checkout-input">
             <input id="checkout-deposit" inputMode="decimal" value={deposit} aria-invalid={invalidDeposit} aria-describedby="checkout-deposit-help checkout-help-text" onChange={(event) => setDeposit(event.target.value)} />
@@ -193,8 +190,8 @@ export function CheckoutPage() {
           ) : !correctChain ? (
             <button className="button button-primary checkout-submit" type="button" onClick={() => runUiAction(switchToCoston2())}>Switch to Coston2</button>
           ) : (
-            <button className="button button-primary checkout-submit" type="button" disabled={!V2_CHECKOUT_DEPLOYED || !plan.active || amount <= 0n || !account || insufficientBalance || invalidInitialCharge} onClick={() => runUiAction(subscribe())}>
-              {V2_CHECKOUT_DEPLOYED ? 'Approve, open and charge' : 'V2 deployment pending'}
+            <button className="button button-primary checkout-submit" type="button" disabled={!plan.active || amount <= 0n || !account || insufficientBalance || invalidInitialCharge} onClick={() => runUiAction(subscribe())}>
+              Approve, open and charge
             </button>
           )}
           <small id="checkout-help-text" aria-live="polite">{checkoutHelp}</small>

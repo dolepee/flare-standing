@@ -1,13 +1,14 @@
 # Standing
 
-Standing is recurring billing for XRP users on Flare. A subscriber prepays a
-bounded FXRP mandate, a permissionless keeper charges it on schedule, and the
-subscriber can cancel onchain and recover every unused unit without asking the
-merchant.
+Standing turns one XRPL payment into an immediately charged recurring mandate
+on Flare. The same verified Coston2 execution mints FXRP, opens the bounded
+subscription, and delivers the first paid period; later permissionless keeper
+charges need neither the subscriber key nor merchant custody. The subscriber
+can cancel onchain and recover every unused unit without asking the merchant.
 
 [Live Coston2 app](https://standing.dolepee.com) ·
 [Evidence](https://standing.dolepee.com/evidence) ·
-[Deployed contract](https://coston2-explorer.flare.network/address/0x8a29c741280554028d76666dc75558d98caab855)
+[Deployed V2 contract](https://coston2-explorer.flare.network/address/0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7)
 
 ## Why Flare is load-bearing
 
@@ -29,9 +30,8 @@ The public app has five operating surfaces plus shareable checkout and access
 routes:
 
 - `/plans` discovers live merchant plans.
-- `/checkout/:planId` previews the gated V2 checkout while the public app still
-  points at the verified V1 proof deployment. It will open and charge a bounded
-  prepaid mandate only after the reviewed V2 cutover.
+- `/checkout/:planId` opens and charges a bounded prepaid V2 mandate in the
+  same Coston2 transaction after the buyer reviews the exact first-charge cap.
 - `/mandates` manages top-ups, cancellation, refunds, and due charges.
 - `/access/:mandateId` demonstrates an entitlement derived from the latest
   successful charge.
@@ -116,15 +116,17 @@ An explicit local live run requires `RUN_LIVE=1` and a dedicated
 workers. GitHub Actions scheduling is best-effort, so showcase plan cadences
 are no shorter than its operating interval.
 
-## Current Coston2 proof deployment
+## Current Coston2 V2 deployment
 
 | Component | Address |
 |---|---|
-| Standing | `0x8a29c741280554028d76666dc75558d98caab855` |
+| Standing V2 | `0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7` |
 | FTSO adapter | `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8` |
 | FTestXRP | `0x0b6A3645c240605887a5532109323A3E12273dc7` |
 
-The controlled validation proves:
+The reviewed V2 deployment is commit-bound to the exact
+`standing.mandates.v2.open-and-charge.cancel-and-withdraw-exact` capability.
+Its controlled validation proves:
 
 - fixed-FXRP and live FTSO-priced charges;
 - top-up, cancellation, post-cancel rejection, and exact refund;
@@ -132,27 +134,37 @@ The controlled validation proves:
 - insufficient-capacity blocking;
 - an XRPL testnet direct mint that produced 10 FXRP on Coston2 in 153 observed
   seconds;
-- one atomic 1.2 XRP testnet payment that direct-minted FXRP and opened Standing
-  mandate 5 with exactly 1 FXRP of prepaid capacity; and
-- a permissionless charge, submitted by the existing Coston2 operator, that
-  later activated that historical pending mandate without the subscriber key
-  or custody.
+- one atomic 1.2 XRP testnet payment that direct-minted FXRP, opened Standing
+  V2 mandate 1 with exactly 1 FXRP of prepaid capacity, and charged its first
+  0.1 FXRP cycle in the same Coston2 transaction; and
+- a separate permissionless recurring charge from the dedicated low-balance
+  keeper, without the subscriber key or custody.
 
 Every transaction and the exact claim boundary is recorded in
 [`docs/VALIDATION_LOG.md`](docs/VALIDATION_LOG.md). This is builder-controlled
 testnet evidence.
 
-The atomic proof is independently replayable from its
-[XRPL payment](https://testnet.xrpl.org/transactions/09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A)
-and [Coston2 execution](https://coston2-explorer.flare.network/tx/0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064).
-The atomic execution stored mandate 5 for plan 4 with `1,000,000` atomic FXRP
-deposited and initially remaining. A later permissionless
-[keeper charge](https://coston2-explorer.flare.network/tx/0xb258435a89008c683ada18df9f549a44b4eb391066cb90db8d6f6ba201860b7c)
-activated access and left `902,058` atomic FTestXRP. The candidate V2 source
-proposes same-transaction initial charging; it is not a reviewed or deployed
-claim until Codex clears the exact source and the V2 address and fresh proof are
-recorded here. This is controlled-builder testnet evidence, not mainnet usage
-or external adoption.
+The V2 atomic proof is independently replayable from its
+[XRPL payment](https://testnet.xrpl.org/transactions/54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD)
+and [Coston2 execution](https://coston2-explorer.flare.network/tx/0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9).
+The same successful Coston2 receipt stored mandate 1 for plan 1 with
+`1,000,000` atomic FXRP deposited, credited `99,000` atomic FXRP to the
+merchant and `1,000` to the protocol, and left `900,000` atomic FXRP as bounded
+recurring capacity. This is controlled-builder testnet evidence, not mainnet
+usage or external adoption.
+
+At the first due boundary, the dedicated low-balance keeper—not the deployer or
+subscriber—submitted the next permissionless
+[charge](https://coston2-explorer.flare.network/tx/0x8c3333505617ef62e2b2823cb0c95ce4ee81a6e601e80978b285865f94d5a2a9).
+It credited another `99,000` atomic FXRP to the merchant, `1,000` to the
+protocol, and left `800,000` atomic FXRP. The receipt sender is
+`0x232C36580360d3E717fc1A583cDd5bEe0fEE7D7D`.
+
+The historical V1 deployment at
+`0x8a29c741280554028d76666dc75558d98caab855` remains available for recovery
+and receipt verification but is paused for new activity. Its earlier proof is
+preserved in `docs/VALIDATION_LOG.md` and is not presented as the current
+checkout contract.
 
 ## Controlled external Coston2 pilot
 

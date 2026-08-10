@@ -81,7 +81,7 @@ export function AtomicProofReplay({
               onClick={() => setActiveStepId(step.id)}
             >
               <span>{step.index}</span>
-              <strong>{step.id === 'authorize' ? 'Pay XRP' : step.id === 'mint' ? 'Mint test FXRP' : step.id === 'subscribe' ? 'Open pending' : 'Charge'}</strong>
+              <strong>{step.id === 'authorize' ? 'Pay XRP' : step.id === 'mint' ? 'Mint test FXRP' : step.id === 'activate' ? 'Activate access' : 'Renew access'}</strong>
             </button>
           </li>
         ))}
@@ -102,9 +102,9 @@ export function AtomicProofReplay({
         <div className="replay-current-heading">
           <div>
             <span className="eyebrow">Latest public Coston2 read</span>
-            <h3 id="replay-current-title">Mandate 5 now</h3>
+            <h3 id="replay-current-title">Mandate 1 now</h3>
           </div>
-          <button className="icon-button" type="button" onClick={onRefresh} aria-label="Refresh mandate 5 from Coston2">
+          <button className="icon-button" type="button" onClick={onRefresh} aria-label="Refresh mandate 1 from Coston2">
             <RefreshCw size={16} className={loading ? 'spin' : ''} aria-hidden="true" />
           </button>
         </div>
@@ -119,7 +119,7 @@ export function AtomicProofReplay({
         <p>{error ? 'The recorded receipts remain independently inspectable while the current-state read is unavailable.' : 'Read-only state from the public Coston2 RPC. No wallet connection or transaction is used.'}</p>
         <div className="replay-current-links">
           <a className="text-link" href={ATOMIC_PROOF.chargeHref} target="_blank" rel="noreferrer">
-            Inspect keeper charge <ExternalLink size={14} aria-hidden="true" />
+            Inspect recurring keeper charge <ExternalLink size={14} aria-hidden="true" />
           </a>
           <a className="text-link" href={ATOMIC_PROOF.standingHref} target="_blank" rel="noreferrer">
             Inspect Standing contract <ExternalLink size={14} aria-hidden="true" />

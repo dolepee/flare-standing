@@ -1,12 +1,14 @@
 {
   "chainId": 114,
   "network": "Coston2",
-  "contractVersion": 1,
-  "standingAddress": "0x8a29c741280554028d76666dc75558d98caab855",
-  "deployBlock": 33098682,
+  "contractVersion": 2,
+  "standingAddress": "0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7",
+  "deploymentTransaction": "0xa0f4d5f5456a2661ad1cb239edb14a7117f7961d6ca2b6392460b27c9a6b53a5",
+  "deployBlock": 33892942,
   "fxrpAddress": "0x0b6A3645c240605887a5532109323A3E12273dc7",
   "priceAdapterAddress": "0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8",
-  "v2CheckoutDeployed": false,
-  "catalogPlanIds": [1, 2],
-  "primaryCheckoutPlanId": 4
+  "v2CheckoutDeployed": true,
+  "catalogPlanIds": [1],
+  "primaryCheckoutPlanId": 1,
+  "historicalV1Address": "0x8a29c741280554028d76666dc75558d98caab855"
 }

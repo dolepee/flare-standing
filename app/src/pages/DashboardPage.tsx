@@ -22,35 +22,35 @@ export function DashboardPage() {
     <div className="page dashboard-page">
       <section className="atomic-hero" aria-labelledby="atomic-hero-title">
         <div className="atomic-hero-copy">
-          <span className="eyebrow">Coston2 testnet · controlled proof</span>
-          <h1 id="atomic-hero-title">One XRP payment. One atomic mint-and-mandate open.</h1>
+          <span className="eyebrow">Verified XRPL → Flare subscription · testnets</span>
+          <h1 id="atomic-hero-title">Pay in XRP. Land subscribed on Flare.</h1>
           <p>
-            A builder-controlled XRPL Testnet account authorized 1.2 XRP. One verified Coston2 transaction delivered 1.1 FTestXRP to its Smart Account and atomically placed 1 FTestXRP into a pending Standing mandate. A later operator-submitted, permissionless charge activated access without the subscriber key.
+            A controlled 1.2 XRP payment was proven through FDC, direct-minted into FTestXRP, then opened and charged a Standing mandate in one Coston2 transaction. The result was immediate paid access with 0.9 FTestXRP left under subscriber control.
           </p>
 
           <dl className="atomic-facts" aria-label="Verified atomic subscription facts">
-            <div><dt>Input</dt><dd>1.2 XRP</dd></div>
-            <div><dt>Flare result</dt><dd>1.1 delivered · 1 prepaid</dd></div>
-            <div><dt>Atomic open</dt><dd>Pending #5</dd></div>
-            <div><dt>First charge</dt><dd>0.097942 FTestXRP</dd></div>
+            <div><dt>User authorized</dt><dd>1.2 XRP</dd></div>
+            <div><dt>Standing deposit</dt><dd>1 FTestXRP</dd></div>
+            <div><dt>Immediate result</dt><dd>Mandate #1 paid</dd></div>
+            <div><dt>First cycle</dt><dd>0.1 FTestXRP</dd></div>
           </dl>
 
           <div className="hero-actions">
-            <a className="button button-primary" href="#verified-replay">Replay verified proof <ArrowRight size={15} aria-hidden="true" /></a>
-            <Link className="button button-secondary" to="/checkout/4">Review V2 testnet checkout</Link>
+            <a className="button button-primary" href="#verified-replay">Verify the exact receipts <ArrowRight size={15} aria-hidden="true" /></a>
+            <Link className="button button-secondary" to="/checkout/1">Try Coston2 checkout</Link>
           </div>
 
-          <div className="experience-boundary" aria-label="Verified replay and V2 checkout preview boundary">
+          <div className="experience-boundary" aria-label="Verified XRP path and browser checkout boundary">
             <div>
               <CheckCircle2 size={18} aria-hidden="true" />
-              <span><strong>Verified replay</strong>Read real public receipts. No wallet, faucet, or transaction.</span>
+              <span><strong>Immediate proof</strong>The open and first charge share one successful Coston2 receipt.</span>
             </div>
             <div>
               <WalletCards size={18} aria-hidden="true" />
-              <span><strong>Browser checkout · V2 pending</strong>A separate Coston2 flow prepared to open and charge atomically after a reviewed deployment.</span>
+              <span><strong>Live V2 checkout</strong>Use test assets to open and pay a first cycle atomically from an EVM wallet.</span>
             </div>
           </div>
-          <p className="claim-boundary">Testnet evidence only. The atomic receipt opened a pending mandate; the later keeper receipt activated paid access. Immediate-charge V2 is not deployed, and this is not a mainnet or browser-execution claim for the verified XRPL path.</p>
+          <p className="claim-boundary">Controlled testnet evidence only: one XRPL Testnet payment plus one Coston2 execution. It is not a single cross-chain transaction, a mainnet deployment, customer adoption, or a browser-execution claim for the XRPL path.</p>
         </div>
 
         <AtomicProofReplay
@@ -81,7 +81,7 @@ export function DashboardPage() {
         <div className="metrics-grid" aria-label="Protocol metrics">
           <Metric label="Active Coston2 plans" value={initialized ? state.plans.filter((plan) => plan.active).length.toString() : '—'} detail={initialized ? `${state.planCount} created` : 'Reading testnet'} />
           <Metric label="Testnet mandates" value={initialized ? state.mandateCount.toString() : '—'} detail={initialized ? `${dueCount} due by schedule` : 'Reading testnet'} />
-          <Metric label="Protocol custody" value={initialized ? `${formatFxrp(state.contractBalance)} FTestXRP` : '—'} detail="Prepaid test capacity" />
+          <Metric label="Protocol custody" value={initialized ? `${formatFxrp(state.contractBalance)} FTestXRP` : '—'} detail="Mandates + accrued claims" />
           <Metric label="Protocol fee" value={initialized ? `${state.feeBps / 100}%` : '—'} detail="Per successful charge" />
         </div>
       </section>
@@ -128,7 +128,7 @@ export function DashboardPage() {
 
       <section className="recent-section">
         <div className="section-title">
-          <div><span className="eyebrow">Separate browser lane · V2 deploy pending</span><h2>Review current V1 plan terms before the V2 cutover</h2></div>
+          <div><span className="eyebrow">Live V2 browser lane · Coston2 testnet</span><h2>Open and pay the first cycle in one transaction</h2></div>
           <Link className="text-link" to="/plans">View all <ArrowRight size={15} aria-hidden="true" /></Link>
         </div>
         <div className="compact-plan-list">

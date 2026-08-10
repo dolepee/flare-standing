@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { ATOMIC_PROOF, ATOMIC_REPLAY_STEPS } from './atomicProof'
 
 describe('verified atomic replay', () => {
-  it('keeps the atomic open and later recurring charge as distinct receipts', () => {
+  it('binds direct mint, mandate open, and first charge to the same Coston2 receipt', () => {
     expect(ATOMIC_REPLAY_STEPS.map((step) => step.id)).toEqual([
       'authorize',
       'mint',
-      'subscribe',
-      'charge',
+      'activate',
+      'recur',
     ])
-    expect(ATOMIC_PROOF.coston2Transaction).not.toBe(ATOMIC_PROOF.chargeTransaction)
     expect(ATOMIC_REPLAY_STEPS[1].transaction).toBe(ATOMIC_REPLAY_STEPS[2].transaction)
     expect(ATOMIC_REPLAY_STEPS[3].transaction).toBe(ATOMIC_PROOF.chargeTransaction)
+    expect(ATOMIC_PROOF.coston2Transaction).not.toBe(ATOMIC_PROOF.chargeTransaction)
   })
 
   it('publishes exact testnet explorer links for every transaction claim', () => {

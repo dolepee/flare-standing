@@ -3,23 +3,27 @@ import { COSTON2_EXPLORER, STANDING_ADDRESS } from '../config'
 export const XRPL_TESTNET_EXPLORER = 'https://testnet.xrpl.org/transactions'
 
 export const ATOMIC_PROOF = Object.freeze({
-  mandateId: 5n,
-  planId: 4n,
+  mandateId: 1n,
+  planId: 1n,
   subscriber: '0x230068eE8262BE1A7DF36f55Ebb17F64Cc8F7890',
-  xrplTransaction: '09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A',
-  coston2Transaction: '0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064',
-  chargeTransaction: '0xb258435a89008c683ada18df9f549a44b4eb391066cb90db8d6f6ba201860b7c',
-  xrplLedger: '19,738,200',
+  xrplTransaction: '54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD',
+  coston2Transaction: '0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9',
+  chargeTransaction: '0x8c3333505617ef62e2b2823cb0c95ce4ee81a6e601e80978b285865f94d5a2a9',
+  deployTransaction: '0xa0f4d5f5456a2661ad1cb239edb14a7117f7961d6ca2b6392460b27c9a6b53a5',
+  planTransaction: '0x06c0bfc5ecd8cb12327ad15b658d15bc328c0087644c5b2a57a97fbe6c28b2c0',
+  xrplLedger: '19,802,686',
   xrplAmount: '1.2 XRP',
   mintedAmount: '1.1 FTestXRP delivered · 1 FTestXRP prepaid',
-  xrplHref: `${XRPL_TESTNET_EXPLORER}/09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A`,
-  coston2Href: `${COSTON2_EXPLORER}/tx/0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064`,
-  chargeHref: `${COSTON2_EXPLORER}/tx/0xb258435a89008c683ada18df9f549a44b4eb391066cb90db8d6f6ba201860b7c`,
+  xrplHref: `${XRPL_TESTNET_EXPLORER}/54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD`,
+  coston2Href: `${COSTON2_EXPLORER}/tx/0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9`,
+  chargeHref: `${COSTON2_EXPLORER}/tx/0x8c3333505617ef62e2b2823cb0c95ce4ee81a6e601e80978b285865f94d5a2a9`,
+  deployHref: `${COSTON2_EXPLORER}/tx/0xa0f4d5f5456a2661ad1cb239edb14a7117f7961d6ca2b6392460b27c9a6b53a5`,
+  planHref: `${COSTON2_EXPLORER}/tx/0x06c0bfc5ecd8cb12327ad15b658d15bc328c0087644c5b2a57a97fbe6c28b2c0`,
   standingHref: `${COSTON2_EXPLORER}/address/${STANDING_ADDRESS}`,
 })
 
 export type AtomicReplayStep = {
-  id: 'authorize' | 'mint' | 'subscribe' | 'charge'
+  id: 'authorize' | 'mint' | 'activate' | 'recur'
   index: string
   network: string
   title: string
@@ -56,27 +60,27 @@ export const ATOMIC_REPLAY_STEPS: readonly AtomicReplayStep[] = Object.freeze([
     linkLabel: 'Open exact Coston2 transaction',
   },
   {
-    id: 'subscribe',
+    id: 'activate',
     index: '03',
     network: 'Flare Coston2 testnet',
-    title: 'Mint and pending subscribe settle atomically.',
+    title: 'The subscription opens and pays immediately.',
     summary:
-      'Inside that same Coston2 transaction, the Smart Account approved Standing and opened pending mandate 5 for plan 4 with 1 FTestXRP prepaid. No recurring charge happened yet.',
-    result: 'Pending mandate 5 · 1 FTestXRP',
+      'Inside that same Coston2 transaction, the Smart Account approved Standing, opened mandate 1 for plan 1, and charged the first 0.1 FTestXRP cycle. The merchant received 0.099, the protocol fee was 0.001, and 0.9 remains under the subscriber-controlled mandate.',
+    result: 'Mandate 1 active · first cycle paid · 0.9 left',
     transaction: ATOMIC_PROOF.coston2Transaction,
     href: ATOMIC_PROOF.coston2Href,
-    linkLabel: 'Inspect the shared Coston2 receipt',
+    linkLabel: 'Inspect open + first-charge receipt',
   },
   {
-    id: 'charge',
+    id: 'recur',
     index: '04',
     network: 'Flare Coston2 testnet',
-    title: 'A later keeper proves the recurring charge.',
+    title: 'A different keeper advances the next cycle.',
     summary:
-      'The existing Coston2 operator invoked the permissionless charge path for mandate 5: 0.097942 FTestXRP left the mandate, including a 0.000979 FTestXRP protocol fee. No subscriber key or custody was required.',
-    result: 'Paid · active · 0.902058 FTestXRP left',
+      'The permissionless keeper address later charged mandate 1 without the subscriber key. A second 0.1 FTestXRP cycle settled with the same 0.099 merchant and 0.001 fee split, leaving 0.8 under the mandate.',
+    result: 'Second cycle paid · 0.8 FTestXRP left',
     transaction: ATOMIC_PROOF.chargeTransaction,
     href: ATOMIC_PROOF.chargeHref,
-    linkLabel: 'Open exact keeper charge transaction',
+    linkLabel: 'Inspect recurring keeper receipt',
   },
 ])

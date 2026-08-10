@@ -8,13 +8,13 @@
     <text x="980" y="37" fill="#14633e" font-family="monospace" font-size="15" text-anchor="end">FLARE · COSTON2 TESTNET</text>
   </g>
   <g transform="translate(72 188)">
-    <text x="0" y="0" fill="#17201b" font-family="Arial, sans-serif" font-size="72" font-weight="600">One XRP payment.</text>
-    <text x="0" y="88" fill="#17201b" font-family="Arial, sans-serif" font-size="72" font-weight="600">One atomic mandate open.</text>
-    <text x="0" y="160" fill="#647068" font-family="Arial, sans-serif" font-size="22">Atomic pending open · Later keeper charge activates paid access</text>
+    <text x="0" y="0" fill="#17201b" font-family="Arial, sans-serif" font-size="72" font-weight="600">Pay in XRP.</text>
+    <text x="0" y="88" fill="#17201b" font-family="Arial, sans-serif" font-size="72" font-weight="600">Land subscribed on Flare.</text>
+    <text x="0" y="160" fill="#647068" font-family="Arial, sans-serif" font-size="22">Direct mint · Mandate open · First cycle paid immediately</text>
   </g>
   <g transform="translate(72 500)">
     <rect width="1056" height="70" rx="6" fill="#17201b"/>
     <circle cx="34" cy="35" r="8" fill="#6bc88e"/>
-    <text x="58" y="43" fill="#f4f6f2" font-family="monospace" font-size="17">XRPL TESTNET → FDC → FLARE COSTON2 · EXACT RECEIPTS</text>
+    <text x="58" y="43" fill="#f4f6f2" font-family="monospace" font-size="17">XRPL TESTNET → FDC → FLARE COSTON2 · VERIFIED V2 RECEIPTS</text>
   </g>
 </svg>

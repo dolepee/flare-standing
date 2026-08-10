@@ -4,13 +4,13 @@ import { COSTON2_EXPLORER, FTSO_ADAPTER_ADDRESS, STANDING_ADDRESS } from '../con
 import { ATOMIC_PROOF } from '../lib/atomicProof'
 
 const proofRows = [
-  { label: 'Standing testnet deployment', network: 'Flare Coston2 testnet', value: STANDING_ADDRESS, href: `${COSTON2_EXPLORER}/address/${STANDING_ADDRESS}` },
+  { label: 'Standing V2 deployment', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.deployTransaction, href: ATOMIC_PROOF.deployHref },
+  { label: 'Atomic XRP Access plan created', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.planTransaction, href: ATOMIC_PROOF.planHref },
+  { label: 'Standing V2 contract', network: 'Flare Coston2 testnet', value: STANDING_ADDRESS, href: `${COSTON2_EXPLORER}/address/${STANDING_ADDRESS}` },
   { label: 'FTSO USD adapter', network: 'Flare Coston2 testnet', value: FTSO_ADAPTER_ADDRESS, href: `${COSTON2_EXPLORER}/address/${FTSO_ADAPTER_ADDRESS}` },
   { label: 'User-authorized XRP payment', network: 'XRPL Testnet', value: ATOMIC_PROOF.xrplTransaction, href: ATOMIC_PROOF.xrplHref },
-  { label: 'Atomic mint + pending mandate 5', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.coston2Transaction, href: ATOMIC_PROOF.coston2Href },
-  { label: 'First recurring keeper charge', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.chargeTransaction, href: ATOMIC_PROOF.chargeHref },
-  { label: 'FTSO-priced test charge', network: 'Flare Coston2 testnet', value: '0x0791f6fd41dc4a5cf94e9a4973ecba3ed8c3b3e82b3169d1f214f2bc8fb28a43', href: `${COSTON2_EXPLORER}/tx/0x0791f6fd41dc4a5cf94e9a4973ecba3ed8c3b3e82b3169d1f214f2bc8fb28a43` },
-  { label: 'Tagged direct-mint execution', network: 'Flare Coston2 testnet', value: '0x740995f3602e9f6548ccb11d70c789c53490faee67d1455f2a6faa7e3bec4c28', href: `${COSTON2_EXPLORER}/tx/0x740995f3602e9f6548ccb11d70c789c53490faee67d1455f2a6faa7e3bec4c28` },
+  { label: 'Direct mint + open + first charge', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.coston2Transaction, href: ATOMIC_PROOF.coston2Href },
+  { label: 'Permissionless recurring keeper charge', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.chargeTransaction, href: ATOMIC_PROOF.chargeHref },
 ]
 
 const pilotRows = [
@@ -29,14 +29,14 @@ export function EvidencePage() {
         <div>
           <span className="eyebrow">Exact public receipts · testnets only</span>
           <h1>Inspect every proof at its source.</h1>
-          <p>The primary claim is narrow: one validated XRPL Testnet payment and one successful Coston2 transaction produced the atomic mint-and-pending-subscribe result. A later keeper transaction proves the first paid recurring cycle. Identity statements stay separate from what chain state proves.</p>
+          <p>The primary claim is narrow: one validated XRPL Testnet payment and one successful Coston2 transaction direct-minted FTestXRP, opened mandate 1, and paid its first cycle. Identity statements stay separate from what chain state proves.</p>
         </div>
         <Link className="button button-primary" to="/#verified-replay">Open interactive replay</Link>
       </section>
 
       <section className="receipt-boundary" aria-label="Proof and checkout boundary">
-        <div><strong>Verified replay</strong><span>Historical public receipts plus the latest read of mandate 5. No wallet or writes.</span></div>
-        <div><strong>Browser checkout · V2 deploy pending</strong><span>A different Coston2 path prepared for atomic open-and-charge; no legacy pending-only write is offered.</span></div>
+        <div><strong>Verified XRP path</strong><span>Fresh public V2 receipts plus the latest read of mandate 1. No wallet or writes.</span></div>
+        <div><strong>Live browser checkout</strong><span>A separate Coston2 testnet path uses existing FTestXRP to open and charge atomically.</span></div>
       </section>
 
       <section className="proof-layout">
@@ -54,10 +54,11 @@ export function EvidencePage() {
           <ol>
             <li><span>1.2 XRP</span><div><strong>Payment validated</strong><small>tesSUCCESS · ledger {ATOMIC_PROOF.xrplLedger} · canonical 0xFE instruction</small></div></li>
             <li><span>FDC</span><div><strong>Payment proven on Coston2</strong><small>1.1 FTestXRP reached the Smart Account; 1 FTestXRP entered Standing</small></div></li>
-            <li><span>#5</span><div><strong>Mint and pending subscribe settle together</strong><small>Plan 4 · 1 FTestXRP prepaid · no charge yet</small></div></li>
-            <li><span>Keeper</span><div><strong>Later charge activates paid access</strong><small>0.097942 FTestXRP charged · 0.902058 remains</small></div></li>
+            <li><span>#1</span><div><strong>The mandate opens</strong><small>Plan 1 · 1 FTestXRP deposited · subscriber remains in control</small></div></li>
+            <li><span>Paid</span><div><strong>First-cycle access activates immediately</strong><small>0.1 charged · 0.099 merchant · 0.001 fee · 0.9 remains</small></div></li>
+            <li><span>Keeper</span><div><strong>The next cycle advances permissionlessly</strong><small>Different sender · 0.1 charged · 0.8 remains · no subscriber key</small></div></li>
           </ol>
-          <p>Controlled-builder evidence using XRPL Testnet, Flare Coston2, Smart Accounts, FAssets, FDC, and Standing. It is not a mainnet or customer-adoption claim.</p>
+          <p>Controlled-builder evidence using XRPL Testnet, Flare Coston2, Smart Accounts, FAssets, FDC, and Standing. The XRPL payment and Coston2 execution are separate source-chain transactions. This is not a mainnet or customer-adoption claim.</p>
         </aside>
       </section>
 

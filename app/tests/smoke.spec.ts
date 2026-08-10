@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-for (const path of ['/', '/plans', '/checkout/2', '/mandates', '/access/2', '/merchant', '/evidence']) {
+for (const path of ['/', '/plans', '/checkout/1', '/mandates', '/access/1', '/merchant', '/evidence']) {
   test(`${path} renders without horizontal overflow`, async ({ page }) => {
     const errors: string[] = []
     const failedRequests: string[] = []
@@ -24,29 +24,29 @@ for (const path of ['/', '/plans', '/checkout/2', '/mandates', '/access/2', '/me
 }
 
 test('named checkout resolves against the live onchain plan', async ({ page }) => {
-  await page.goto('/checkout/2')
-  await expect(page.getByRole('heading', { name: 'FTSO Creator Pass' })).toBeVisible()
+  await page.goto('/checkout/1')
+  await expect(page.getByRole('heading', { name: 'Atomic XRP Access Pass' })).toBeVisible()
   await expect(page.getByText('Controlled fixture')).toBeVisible()
+  await expect(page.getByText('V2 live')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Prepare Coston2 before checkout' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Open official faucet/ })).toHaveAttribute('href', 'https://faucet.flare.network/')
-  await expect(page.getByLabel('Maximum initial charge')).toBeVisible()
-  await expect(page.getByText(/Required FTSO slippage ceiling/)).toBeVisible()
+  await expect(page.getByText('Exact initial-charge ceiling')).toBeVisible()
+  await expect(page.getByRole('complementary').getByText('0.1 FTestXRP').first()).toBeVisible()
   await expect(page.getByRole('complementary').getByRole('button', { name: 'Connect wallet' })).toBeVisible()
 })
 
-test('first fold replays real receipts before offering a separate V2 checkout preview', async ({ page }) => {
+test('first fold leads with the immediately useful XRP-funded subscription', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'One XRP payment. One atomic mint-and-mandate open.' })).toBeVisible()
-  await expect(page.getByText('Verified replay', { exact: true })).toBeVisible()
-  await expect(page.getByText('Browser checkout · V2 pending', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Open exact XRPL transaction/ })).toHaveAttribute('href', /09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A$/)
-  await page.getByRole('button', { name: /04 Charge/ }).click()
-  await expect(page.getByRole('heading', { name: 'A later keeper proves the recurring charge.' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Open exact keeper charge transaction/ })).toHaveAttribute('href', /0xb258435a89008c683ada18df9f549a44b4eb391066cb90db8d6f6ba201860b7c$/)
-  await expect(page.getByRole('heading', { name: 'Mandate 5 now' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Pay in XRP. Land subscribed on Flare.' })).toBeVisible()
+  await expect(page.getByText('Immediate proof', { exact: true })).toBeVisible()
+  await expect(page.getByText('Live V2 checkout', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Open exact XRPL transaction/ })).toHaveAttribute('href', /54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD$/)
+  await page.getByRole('button', { name: /03 Activate access/ }).click()
+  await expect(page.getByRole('heading', { name: 'The subscription opens and pays immediately.' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Inspect open \+ first-charge receipt/ })).toHaveAttribute('href', /0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9$/)
+  await expect(page.getByRole('heading', { name: 'Mandate 1 now' })).toBeVisible()
   await expect(page.getByText(/Paid · (active|charge due)/)).toBeVisible()
-  await expect(page.getByText(/Immediate-charge V2 is not deployed/)).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Review V2 testnet checkout' })).toHaveAttribute('href', '/checkout/4')
+  await expect(page.getByRole('link', { name: 'Try Coston2 checkout' })).toHaveAttribute('href', '/checkout/1')
 })
 
 test('fixed-price checkout displays the exact initial charge ceiling', async ({ page }) => {
@@ -56,24 +56,11 @@ test('fixed-price checkout displays the exact initial charge ceiling', async ({ 
   await expect(page.getByText('Fixed-price plans use the exact plan price, never the whole deposit.')).toBeVisible()
 })
 
-test('V2 checkout cannot submit against the configured V1 deployment', async ({ page }) => {
-  await page.addInitScript(() => {
-    const account = '0x1111111111111111111111111111111111111111'
-    window.ethereum = {
-      request: async ({ method }: { method: string }) => {
-        if (method === 'eth_accounts') return [account]
-        if (method === 'eth_chainId') return '0x72'
-        throw new Error(`Unexpected wallet method: ${method}`)
-      },
-      on: () => undefined,
-      removeListener: () => undefined,
-    }
-  })
-  await page.goto('/checkout/2')
-  await page.getByLabel('Maximum initial charge').fill('0.2')
-  const pending = page.getByRole('button', { name: 'V2 deployment pending' })
-  await expect(pending).toBeDisabled()
-  await expect(page.getByText(/No legacy pending-only open will be submitted/)).toBeVisible()
+test('V2 checkout presents the live open-and-first-charge action', async ({ page }) => {
+  await page.goto('/checkout/1')
+  await expect(page.getByText('V2 live')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Open with access paid' })).toBeVisible()
+  await expect(page.getByText(/transaction must both open the test mandate and emit its first ChargeExecuted event/)).toBeVisible()
 })
 
 test('merchant capability stays discoverable without occupying primary navigation', async ({ page }) => {
@@ -82,11 +69,10 @@ test('merchant capability stays discoverable without occupying primary navigatio
   await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: /Merchant/ })).toHaveCount(0)
 })
 
-test('canceled mandate keeps the reference entitlement locked', async ({ page }) => {
-  await page.goto('/access/2')
-  await expect(page.getByRole('heading', { name: 'Creator member dispatch' })).toBeVisible()
-  await expect(page.getByText('Access ended')).toBeVisible()
-  await expect(page.getByText('The latest edition is unlocked.')).toHaveCount(0)
+test('the verified mandate has a direct subscriber-access surface', async ({ page }) => {
+  await page.goto('/access/1')
+  await expect(page.getByRole('heading', { name: 'Atomic XRP subscriber brief' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Mandate #1' })).toBeVisible()
 })
 
 test.describe('mobile navigation', () => {
@@ -111,10 +97,10 @@ test.describe('mobile navigation', () => {
 test('evidence publishes the bounded external pilot and its closeout proofs', async ({ page }) => {
   await page.goto('/evidence')
   await expect(page.getByRole('heading', { name: 'Inspect every proof at its source.' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /User-authorized XRP payment/ })).toHaveAttribute('href', /09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A$/)
-  await expect(page.getByRole('link', { name: /Atomic mint \+ pending mandate 5/ })).toHaveAttribute('href', /0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064$/)
-  await expect(page.getByRole('link', { name: /First recurring keeper charge/ })).toHaveAttribute('href', /0xb258435a89008c683ada18df9f549a44b4eb391066cb90db8d6f6ba201860b7c$/)
-  await expect(page.getByText('Plan 4 · 1 FTestXRP prepaid · no charge yet')).toBeVisible()
+  await expect(page.getByRole('link', { name: /User-authorized XRP payment/ })).toHaveAttribute('href', /54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD$/)
+  await expect(page.getByRole('link', { name: /Direct mint \+ open \+ first charge/ })).toHaveAttribute('href', /0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9$/)
+  await expect(page.getByRole('link', { name: /Permissionless recurring keeper charge/ })).toHaveAttribute('href', /0x8c3333505617ef62e2b2823cb0c95ce4ee81a6e601e80978b285865f94d5a2a9$/)
+  await expect(page.getByText('0.1 charged · 0.099 merchant · 0.001 fee · 0.9 remains')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Separate addresses completed a Coston2 billing loop.' })).toBeVisible()
   await expect(page.getByText('Standing made the recurring Coston2 payment lifecycle easy to verify from plan creation through merchant withdrawal.')).toBeVisible()
   await expect(page.getByText(/Virtual attribution, participant independence, and the quote are attestations/i)).toBeVisible()

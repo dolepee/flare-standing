@@ -10,14 +10,14 @@ export function Coston2Setup() {
   return (
     <section className="testnet-setup" aria-labelledby={titleId}>
       <div className="testnet-setup-copy">
-        <span className="eyebrow">Separate browser path · V2 deploy pending</span>
+        <span className="eyebrow">Live browser path · Coston2 testnet</span>
         <h2 id={titleId}>Prepare Coston2 before checkout</h2>
-        <p>The V2 flow uses test assets already on Flare and will open plus charge atomically. The configured address remains V1, so no checkout write is enabled yet.</p>
+        <p>The live V2 flow uses test assets already on Flare and opens plus charges the first cycle atomically. This browser lane is separate from the verified XRPL-funded proof.</p>
       </div>
       <ol>
         <li><WalletCards size={17} aria-hidden="true" /><span><strong>Add Coston2 testnet</strong>Chain 114 in an EVM wallet</span></li>
         <li><Fuel size={17} aria-hidden="true" /><span><strong>Get free test assets</strong>C2FLR gas and FTestXRP</span></li>
-        <li><span className="setup-step" aria-hidden="true">3</span><span><strong>Open + charge on V2</strong>Approval, then one atomic transaction</span></li>
+        <li><span className="setup-step" aria-hidden="true">3</span><span><strong>Open + charge</strong>Approval, then one atomic transaction</span></li>
       </ol>
       <div className="testnet-setup-actions">
         <a className="button button-primary" href={COSTON2_FAUCET} target="_blank" rel="noreferrer">

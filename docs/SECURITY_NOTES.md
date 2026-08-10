@@ -1,6 +1,6 @@
 # Standing Security Notes
 
-## Hardened V2 candidate
+## Hardened V2 release
 
 The current source adds these protections after the first Coston2 validation deployment:
 
@@ -54,14 +54,13 @@ Every externally callable path to those calls uses `nonReentrant`; callback and
 accounting-rollback tests exercise the boundary. No detector result is treated
 as an independent audit finding.
 
-## Deployment implication
+## Deployment status
 
-The historical Coston2 contract at `0xa1ccfe102946be49b7f2224b16402465d46a7c94` predates these changes. Its transaction history remains valid evidence for the initial technical spike, but it is not the hardened release candidate.
-
-Adopting this source requires a new Coston2 deployment from a reviewed commit,
-followed by a fresh immediate-open, recurring charge, underfunded retry,
-cancellation, and withdrawal proof set. No proxy or upgrade path exists, so
-the historical contract cannot be modified in place.
+The current V2 contract is
+`0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7` on Coston2. A fresh controlled
+XRPL payment proved the immediate open-and-charge path against this exact
+deployment. The historical contracts predate these changes and remain only as
+recovery and receipt-verification surfaces; no proxy or upgrade path exists.
 
 ## Remaining boundaries
 
