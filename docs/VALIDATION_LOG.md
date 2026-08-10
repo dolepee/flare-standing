@@ -1,6 +1,6 @@
 # STANDING — 48-Hour Validation Log
 
-Last updated: 2026-08-05
+Last updated: 2026-08-10
 
 Project: `Standing` (Flare recurring payments / prepaid mandates)
 
@@ -11,24 +11,25 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 - [x] Live USD-priced charge resolves through the Coston2 XRP/USD FTSO feed
 - [x] Historical Coston2 spike deployment captured (`0xa1ccfe102946be49b7f2224b16402465d46a7c94`)
 - [x] Coston2 proof set captured: open, charge, top-up, cancel, insufficient-balance block, and canceled-charge rejection
-- [x] Hardened Coston2 candidate lifecycle validation completed (`0x8a29c741280554028d76666dc75558d98caab855`)
+- [x] Deployed hardened V1 lifecycle validation completed (`0x8a29c741280554028d76666dc75558d98caab855`)
 - [x] Completed one external merchant-and-subscriber lifecycle
 - [x] Keeper path executed permissionlessly for both `ChargeExecuted` and `ChargeBlocked`
 - [x] One XRPL testnet direct-mint path completed and timed
 - [x] Smart Accounts/direct-mint path executed on Coston2
 - [x] External merchant and subscriber booked for the controlled Coston2 pilot
-- [ ] Demo script aligned to final product framing (prepaid mandate + onchain replay points)
 
 ## Current notes
 
 - Contract scaffold and tests are in place (`src/StandingMandates.sol`, `script/*.s.sol`, `test/Standing.t.sol`).
-- Local gates are complete:
+- Candidate V2 local gates are complete as of 2026-08-10:
   - `forge fmt` ✅
   - `forge build` ✅
-  - `forge test` ✅ (26/26 passing, including 2 stateful invariants)
+  - `forge test` ✅ (37/37 passing, including 2 stateful invariants with 256 runs and 128,000 calls each)
   - `forge coverage --report lcov` ✅
-  - `cd app && npm test` ✅ (15/15 passing)
-  - `cd app && npm run test:browser` ✅ (30/30 desktop/mobile)
+  - `cd app && npm test` ✅ (22/22 passing)
+  - `cd app && npm run test:browser` ✅ (38/38 desktop/mobile on a verified free port)
+  - `cd tools/atomic-subscribe && npm test` ✅ (45/45 passing)
+  - `cd tools/keeper && npm test` ✅ (7/7 passing)
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
   - Coston2 FTestXRP verified at:
@@ -45,15 +46,16 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 
 ### Source-to-deployment reproducibility check
 
-On 2026-08-02, the current source was compiled with the pinned Solidity
-`0.8.28` configuration. For both live deployments, the compiled creation
+On 2026-08-02, repository commit `b5ab700` was compiled with the pinned Solidity
+`0.8.28` configuration. For both V1 live deployments, the compiled creation
 bytecode plus ABI-encoded constructor arguments matched the original deployment
 transaction input byte-for-byte:
 
 - `StandingMandates`: `DEPLOYMENT_SOURCE_MATCH=true` (`15,228` creation bytes)
 - `FtsoUsdToFxrpAdapter`: `ADAPTER_SOURCE_MATCH=true` (`2,649` creation bytes)
 
-This proves repository/deployment source equivalence. It is not a claim that
+This proves V1 commit `b5ab700`/deployment source equivalence. Candidate V2
+changes made after that commit are not deployed by this evidence. It is not a claim that
 the explorer has published or independently verified the source; Blockscout
 source publication remains a release operation.
 
@@ -65,13 +67,13 @@ source publication remains a release operation.
   - tx `0x6a0b12daeb78536386a6d07cdaac6db80a42fbdc5d9b9d56d9b4c07668d7c423` (block `33091761`)
 - This path is valid demonstration history for source version before hardening fixes.
 
-### Hardened Coston2 candidate (current release branch target)
+### Deployed hardened V1 proof contract
 
 - Standing contract deployed: `0x8a29c741280554028d76666dc75558d98caab855`
   - tx `0x06a9ab44b01fa7074bf5eff8f173219b954e0685542acbac13950bc94c0862e9` (block `33098682`)
 - FTSO adapter deployed: `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8`
   - tx `0x2483d9c361434a90a6fdec01f07103ba56b7417d6bc92850540df670a37d112f` (block `33098665`)
-- Current live state (queried 2026-07-21):
+- Historical live state (queried 2026-07-21):
   - `planCount() = 2`
   - `mandateCount() = 2`
   - `contractBalance() = 0`
@@ -81,6 +83,14 @@ source publication remains a release operation.
   - signer allowance to Standing = `0`
   - merchant and protocol claim balances = `0` after withdrawal
   - mandates 1 and 2 are canceled with deposited and remaining balances zero after refund
+
+- Current V1 live state (queried 2026-08-10):
+  - `planCount() = 4`
+  - `mandateCount() = 5`
+  - `contractBalance() = 1,001,854` raw FTestXRP
+  - `owner() = 0x9C7169BAAB226ABCC5C20d1CabebA8BaB9ea99dd`
+  - `paused() = false`
+  - mandate 5 remains active with `902,058` raw FTestXRP after its first charge
 
 ### Hardened lifecycle proof
 
@@ -213,17 +223,38 @@ one Flare transaction.
 - Coston2 execution:
   `0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064`
   - receipt status: success
-  - net direct-minted amount delivered to the Smart Account: `1,000,000` UBA
+  - total FTestXRP delivered to the Smart Account: `1,100,000` UBA
   - Standing deposit: `1,000,000` atomic FXRP (`1 FXRP`)
   - mandate: `5`, plan: `4`
   - stored subscriber: `0x230068eE8262BE1A7DF36f55Ebb17F64Cc8F7890`
   - stored remaining capacity: `1,000,000` atomic FXRP
   - scheduled charge: nonzero; prior charge: zero; canceled: false
 
-The payment amount also included the live `100,000` UBA minting fee and
-`100,000` UBA direct-mint executor fee. The Smart Account instruction executor
-fee remained zero, matching Flare's official `0xFE` starter. This is
+The payment amount also included the live `100,000` UBA minting fee and the
+extra `100,000` UBA delivered to the Smart Account for the direct-mint executor
+component. Standing deposited exactly `1,000,000` UBA. The Smart Account
+instruction executor fee remained zero, matching Flare's official `0xFE`
+starter. This is
 controlled-builder testnet evidence, not a mainnet or external-user claim.
+
+The historical contract scheduled rather than immediately charging that
+mandate. On 2026-08-10, the existing Coston2 operator invoked the permissionless
+charge path for the first due charge. The call required no subscriber key or
+custody:
+
+- Coston2 charge:
+  `0xb258435a89008c683ada18df9f549a44b4eb391066cb90db8d6f6ba201860b7c`
+- receipt status: success
+- merchant credit: `96,963` atomic FTestXRP
+- protocol fee: `979` atomic FTestXRP
+- gross capacity consumed: `97,942` atomic FTestXRP
+- remaining mandate capacity: `902,058` atomic FTestXRP
+- stored `lastChargeAt`: `1786379892`
+- stored `nextChargeAt`: `1786466292`
+
+That receipt proves activation after the historical pending open. It does not
+prove the new same-transaction initial-charge path; the V2 source and its fresh
+proof are tracked separately until reviewed deployment.
 
 Funding for this validation was recovered from the same signer's canceled
 historical mandates. One recovery attempt
@@ -235,7 +266,7 @@ gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`)
 ### Gate status
 
 - Historical proof remains useful for the insufficient-balance keeper path.
-- The hardened candidate now proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
+- The deployed V1 proof contract proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
 - The Coston2 contract, live FTSO, and XRPL-to-Coston2 direct-mint portions of
   the 48-hour gate are complete.
 - The one-payment atomic subscription gate is complete: XRPL payment, FDC

@@ -1,0 +1,12 @@
+{
+  "chainId": 114,
+  "network": "Coston2",
+  "contractVersion": 1,
+  "standingAddress": "0x8a29c741280554028d76666dc75558d98caab855",
+  "deployBlock": 33098682,
+  "fxrpAddress": "0x0b6A3645c240605887a5532109323A3E12273dc7",
+  "priceAdapterAddress": "0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8",
+  "v2CheckoutDeployed": false,
+  "catalogPlanIds": [1, 2],
+  "primaryCheckoutPlanId": 4
+}

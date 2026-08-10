@@ -88,6 +88,37 @@ contract StandingEdgeCasesTest is Test {
         standing.openMandate(planId, 0);
     }
 
+    function test_ImmediateOpenRejectsInvalidPlanZeroDepositAndZeroMaximum() public {
+        vm.expectRevert(StandingMandates.NotActive.selector);
+        standing.openMandateAndCharge(0, UNIT, UNIT);
+
+        uint256 planId = _fixedPlan(UNIT);
+        vm.expectRevert(StandingMandates.InvalidArgument.selector);
+        standing.openMandateAndCharge(planId, 0, UNIT);
+
+        vm.expectRevert(StandingMandates.InvalidArgument.selector);
+        standing.openMandateAndCharge(planId, UNIT, 0);
+
+        assertEq(standing.mandateCount(), 0);
+        assertEq(token.balanceOf(address(standing)), 0);
+    }
+
+    function test_ImmediateOpenIsBlockedWhilePausedOrPlanInactive() public {
+        uint256 planId = _fixedPlan(UNIT);
+        standing.setPaused(true);
+
+        vm.expectRevert(StandingMandates.NotActive.selector);
+        standing.openMandateAndCharge(planId, UNIT, UNIT);
+
+        standing.setPaused(false);
+        vm.prank(MERCHANT);
+        standing.setPlanActive(planId, false);
+
+        vm.expectRevert(StandingMandates.NotActive.selector);
+        standing.openMandateAndCharge(planId, UNIT, UNIT);
+        assertEq(standing.mandateCount(), 0);
+    }
+
     function test_ChargeBoundaryAndDuplicateChargeAreRejected() public {
         uint256 planId = _fixedPlan(UNIT);
         standing.openMandate(planId, 3 * UNIT);
@@ -139,6 +170,22 @@ contract StandingEdgeCasesTest is Test {
         standing.withdrawMandate(1);
         vm.expectRevert(StandingMandates.InvalidArgument.selector);
         standing.withdrawMandate(1);
+    }
+
+    function test_ExactCancelWithdrawRejectsUnauthorizedAndZeroExpectation() public {
+        uint256 planId = _fixedPlan(UNIT);
+        standing.openMandate(planId, UNIT);
+
+        vm.prank(STRANGER);
+        vm.expectRevert(StandingMandates.Unauthorized.selector);
+        standing.cancelAndWithdrawExact(1, UNIT);
+
+        vm.expectRevert(StandingMandates.InvalidArgument.selector);
+        standing.cancelAndWithdrawExact(1, 0);
+
+        StandingMandates.Mandate memory unchanged = standing.mandate(1);
+        assertFalse(unchanged.canceled);
+        assertEq(unchanged.remaining, UNIT);
     }
 
     function test_MerchantAndTreasuryWithdrawExactAccruals() public {

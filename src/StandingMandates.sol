@@ -69,7 +69,11 @@ contract StandingMandates {
     event MandateTopUp(uint256 indexed mandateId, address indexed subscriber, uint256 amount);
     event MandateCanceled(uint256 indexed mandateId, address indexed subscriber);
     event ChargeExecuted(
-        uint256 indexed mandateId, address indexed merchant, uint256 amount, uint256 fee, uint256 nextChargeAt
+        uint256 indexed mandateId,
+        address indexed merchant,
+        uint256 merchantAmount,
+        uint256 feeAmount,
+        uint256 nextChargeAt
     );
     event ChargeBlocked(uint256 indexed mandateId, uint256 remaining, uint256 expected);
     event MerchantWithdraw(address indexed merchant, uint256 amount);
@@ -86,6 +90,8 @@ contract StandingMandates {
     error InsufficientBalance();
     error StalePrice();
     error UnsupportedTokenBehavior();
+    error InitialChargeExceedsMaximum(uint256 chargeAmount, uint256 maximumChargeAmount);
+    error RemainingBalanceChanged(uint256 expectedRemaining, uint256 actualRemaining);
 
     constructor(address fxrpToken, address priceAdapter_, address treasury_, uint16 feeBps_, uint256 maxPriceAge_) {
         if (fxrpToken == address(0) || priceAdapter_ == address(0) || treasury_ == address(0)) {
@@ -184,6 +190,43 @@ contract StandingMandates {
         emit MandateOpened(mandateCount, planId, msg.sender, depositAmount, expectedFirstCharge);
     }
 
+    /// @notice Opens a mandate and charges its first period in the same transaction.
+    /// @dev `maxInitialChargeFxrp` bounds the FTSO-derived amount before any tokens are pulled.
+    function openMandateAndCharge(uint256 planId, uint256 depositAmount, uint256 maxInitialChargeFxrp)
+        external
+        notPaused
+        nonReentrant
+    {
+        Plan memory planData = plans[planId];
+        if (planId == 0 || !planData.active || planData.merchant == address(0)) revert NotActive();
+        if (depositAmount == 0 || maxInitialChargeFxrp == 0) revert InvalidArgument();
+
+        uint256 chargeAmount = _getChargeAmount(planData.priceUsdMicro, planData.priceFxrp);
+        if (chargeAmount == 0 || chargeAmount > depositAmount) revert InsufficientBalance();
+        if (chargeAmount > maxInitialChargeFxrp) {
+            revert InitialChargeExceedsMaximum(chargeAmount, maxInitialChargeFxrp);
+        }
+
+        _pullExact(msg.sender, depositAmount);
+
+        uint256 mandateId = ++mandateCount;
+        uint256 nextChargeAt = nextChargeTime(planData.periodSeconds, block.timestamp);
+        mandates[mandateId] = Mandate({
+            planId: planId,
+            subscriber: msg.sender,
+            deposited: depositAmount,
+            remaining: depositAmount - chargeAmount,
+            nextChargeAt: nextChargeAt,
+            lastChargeAt: block.timestamp,
+            canceled: false
+        });
+
+        (uint256 merchantAmount, uint256 fee) = _accrueCharge(planData.merchant, chargeAmount);
+
+        emit MandateOpened(mandateId, planId, msg.sender, depositAmount, block.timestamp);
+        emit ChargeExecuted(mandateId, planData.merchant, merchantAmount, fee, nextChargeAt);
+    }
+
     function topUp(uint256 mandateId, uint256 amount) external notPaused nonReentrant {
         Mandate storage mandateData = mandates[mandateId];
         if (mandateData.subscriber != msg.sender || mandateData.canceled) revert Unauthorized();
@@ -212,7 +255,6 @@ contract StandingMandates {
         uint256 chargeAmount = _getChargeAmount(planData.priceUsdMicro, planData.priceFxrp);
         if (chargeAmount == 0 || chargeAmount > mandateData.remaining) {
             emit ChargeBlocked(mandateId, mandateData.remaining, chargeAmount);
-            mandateData.nextChargeAt = nextChargeTime(planData.periodSeconds, block.timestamp);
             return;
         }
 
@@ -220,13 +262,8 @@ contract StandingMandates {
         mandateData.lastChargeAt = block.timestamp;
         mandateData.nextChargeAt = nextChargeTime(planData.periodSeconds, block.timestamp);
 
-        uint256 fee = (chargeAmount * feeBps) / MAX_BPS;
-        uint256 payToMerchant = chargeAmount - fee;
-
-        merchantBalance[planData.merchant] += payToMerchant;
-        protocolFeeBalance[treasury] += fee;
-
-        emit ChargeExecuted(mandateId, planData.merchant, payToMerchant, fee, mandateData.nextChargeAt);
+        (uint256 merchantAmount, uint256 fee) = _accrueCharge(planData.merchant, chargeAmount);
+        emit ChargeExecuted(mandateId, planData.merchant, merchantAmount, fee, mandateData.nextChargeAt);
     }
 
     function withdrawMandate(uint256 mandateId) external nonReentrant {
@@ -235,6 +272,27 @@ contract StandingMandates {
         if (!mandateData.canceled) revert NotActive();
         uint256 amount = mandateData.remaining;
         if (amount == 0) revert InvalidArgument();
+        mandateData.deposited = 0;
+        mandateData.remaining = 0;
+        _pushExact(msg.sender, amount);
+        emit MandateWithdrawn(mandateId, msg.sender, amount);
+    }
+
+    /// @notice Cancels a mandate if needed and returns exactly the reviewed remaining balance.
+    /// @dev Reverts atomically if a keeper charge or any other state change altered the balance
+    ///      after the subscriber reviewed and authorized the operation.
+    function cancelAndWithdrawExact(uint256 mandateId, uint256 expectedRemaining) external nonReentrant {
+        Mandate storage mandateData = mandates[mandateId];
+        if (mandateData.subscriber != msg.sender) revert Unauthorized();
+        if (expectedRemaining == 0) revert InvalidArgument();
+
+        uint256 amount = mandateData.remaining;
+        if (amount != expectedRemaining) revert RemainingBalanceChanged(expectedRemaining, amount);
+
+        if (!mandateData.canceled) {
+            mandateData.canceled = true;
+            emit MandateCanceled(mandateId, msg.sender);
+        }
         mandateData.deposited = 0;
         mandateData.remaining = 0;
         _pushExact(msg.sender, amount);
@@ -263,6 +321,16 @@ contract StandingMandates {
         (uint256 fxrpAmount, uint256 updatedAt) = priceAdapter.getFxrpForUsdMicro(priceUsdMicro);
         if (updatedAt > block.timestamp || block.timestamp - updatedAt > maxPriceAge) revert StalePrice();
         return fxrpAmount;
+    }
+
+    function _accrueCharge(address merchant, uint256 chargeAmount)
+        private
+        returns (uint256 merchantAmount, uint256 fee)
+    {
+        fee = (chargeAmount * feeBps) / MAX_BPS;
+        merchantAmount = chargeAmount - fee;
+        merchantBalance[merchant] += merchantAmount;
+        protocolFeeBalance[treasury] += fee;
     }
 
     function nextChargeTime(uint32 periodSeconds, uint256 fromTimestamp) internal view returns (uint256) {

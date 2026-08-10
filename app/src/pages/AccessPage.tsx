@@ -126,7 +126,7 @@ export function AccessPage() {
             <div className="member-edition">
               <span>ISSUE 01 · COSTON2</span>
               <h3>Recurring XRP payments without custodial billing credentials</h3>
-              <p>Standing keeps the spending boundary in a subscriber-owned mandate. Merchants can collect on schedule, while the subscriber retains the right to cancel and recover unused FXRP.</p>
+              <p>Standing keeps the spending boundary in a subscriber-owned Coston2 test mandate. Merchants can collect on schedule, while the subscriber retains the right to cancel and recover unused FTestXRP.</p>
             </div>
           ) : (
             <p>{ownsMandate || !connected ? copy.detail : 'Connect the subscriber wallet to open this paid edition.'}</p>
@@ -134,7 +134,7 @@ export function AccessPage() {
           {!connected ? <button className="button button-primary" type="button" onClick={() => runUiAction(connect())}>Connect subscriber wallet</button> : null}
         </div>
         <aside className="entitlement-receipt">
-          <div className="section-title"><div><span className="eyebrow">Live receipt</span><h2>Mandate #{mandate.id.toString()}</h2></div><ReceiptText aria-hidden="true" /></div>
+          <div className="section-title"><div><span className="eyebrow">Coston2 testnet receipt</span><h2>Mandate #{mandate.id.toString()}</h2></div><ReceiptText aria-hidden="true" /></div>
           <dl>
             <div><dt>Subscriber</dt><dd title={mandate.subscriber}>{shortAddress(mandate.subscriber)}</dd></div>
             <div><dt>Plan</dt><dd>#{mandate.planId.toString()} · {profile.name}</dd></div>

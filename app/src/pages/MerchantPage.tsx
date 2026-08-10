@@ -44,16 +44,16 @@ export function MerchantPage() {
 
   return (
     <div className="page">
-      <section className="page-heading"><div><span className="eyebrow">Merchant workspace</span><h1>Issue a plan. Claim completed charges.</h1><p>Plans are controlled by the merchant wallet. Standing only applies the fixed protocol fee after a successful charge.</p></div></section>
+      <section className="page-heading"><div><span className="eyebrow">Secondary capability · Coston2 testnet</span><h1>Create a test plan. Claim completed charges.</h1><p>This wallet tool writes only to the Coston2 test deployment. Plans are controlled by their merchant address, and Standing applies the fixed protocol fee only after a successful charge.</p></div></section>
       <section className="merchant-layout">
         <form className="form-surface" onSubmit={(event) => runUiAction(createPlan(event))}>
           <div className="section-title"><div><span className="eyebrow">New plan</span><h2>Billing terms</h2></div><Plus aria-hidden="true" /></div>
           <fieldset className="segmented field-segmented">
             <legend>Pricing currency</legend>
             <button type="button" className={pricing === 'usd' ? 'active' : ''} onClick={() => setPricing('usd')}>USD via FTSO</button>
-            <button type="button" className={pricing === 'fxrp' ? 'active' : ''} onClick={() => setPricing('fxrp')}>Fixed FXRP</button>
+            <button type="button" className={pricing === 'fxrp' ? 'active' : ''} onClick={() => setPricing('fxrp')}>Fixed FTestXRP</button>
           </fieldset>
-          <label>Charge amount<div className="input-with-unit"><input required inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} /><span>{pricing === 'usd' ? 'USD' : 'FXRP'}</span></div></label>
+          <label>Charge amount<div className="input-with-unit"><input required inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} /><span>{pricing === 'usd' ? 'USD' : 'FTestXRP'}</span></div></label>
           <label>Billing period<div className="input-with-unit"><input required inputMode="numeric" value={period} onChange={(event) => setPeriod(event.target.value)} /><span>days</span></div></label>
           <button className="button button-primary" type="submit" disabled={!account || Number(price) <= 0 || Number(period) <= 0}>Create plan</button>
           {!account ? <small>Connect the merchant wallet to create a plan.</small> : null}
@@ -62,7 +62,7 @@ export function MerchantPage() {
           <div className="merchant-balance">
             <CircleDollarSign aria-hidden="true" />
             <span>Available to claim</span>
-            <strong>{formatFxrp(state.merchantBalance)} FXRP</strong>
+            <strong>{formatFxrp(state.merchantBalance)} FTestXRP</strong>
             <button className="button button-secondary" type="button" onClick={() => runUiAction(withdraw())} disabled={!account || state.merchantBalance === 0n}>Withdraw</button>
           </div>
           <div className="merchant-plan-summary">

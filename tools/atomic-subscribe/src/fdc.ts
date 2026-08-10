@@ -1,5 +1,7 @@
 import {
   decodeAbiParameters,
+  encodeFunctionData,
+  keccak256,
   toHex,
   type AbiParameter,
   type Address,
@@ -25,6 +27,22 @@ export type XrpPaymentProof = ContractFunctionArgs<
   "verifyXRPPayment"
 >[0];
 type XrpPaymentResponse = XrpPaymentProof["data"];
+
+export type FdcProofRequestState = {
+  version: 1;
+  transactionId: Hex;
+  proofOwner: Address;
+  requestBytes: Hex;
+  phase: "PREPARED" | "SIGNED" | "REQUESTED" | "ROUND_IDENTIFIED";
+  requestTransactionHash?: Hex;
+  serializedRequestTransaction?: Hex;
+  requestBlockNumber?: string;
+  votingRoundId?: number;
+  protocolId?: number;
+  relay?: Address;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const responseAbi = (
   xrpPaymentVerificationAbi.find(
@@ -62,21 +80,45 @@ export async function obtainXrpPaymentProof(input: {
   verifierUrl: string;
   verifierApiKey: string;
   daLayerUrl?: string;
-}): Promise<XrpPaymentProof> {
-  const prepared = await postJson(
-    `${input.verifierUrl.replace(/\/$/, "")}/verifier/xrp/XRPPayment/prepareRequest`,
-    {
-      attestationType: toHex("XRPPayment", { size: 32 }),
-      sourceId: toHex("testXRP", { size: 32 }),
-      requestBody: { transactionId: input.transactionId, proofOwner: input.proofOwner },
-    },
-    { "X-API-KEY": input.verifierApiKey },
-  );
-  if (prepared.status !== "VALID" && !(typeof prepared.status === "string" && prepared.status.startsWith("OK"))) {
-    throw new Error(`FDC verifier rejected XRPL payment: ${JSON.stringify(prepared)}`);
+  resume?: FdcProofRequestState;
+  onState?: (state: FdcProofRequestState) => Promise<void>;
+}): Promise<{ proof: XrpPaymentProof; state: FdcProofRequestState }> {
+  let state = input.resume;
+  if (state) {
+    if (state.version !== 1 || state.transactionId.toLowerCase() !== input.transactionId.toLowerCase()) {
+      throw new Error("persisted FDC request is bound to a different XRPL transaction");
+    }
+    if (state.proofOwner.toLowerCase() !== input.proofOwner.toLowerCase()) {
+      throw new Error("persisted FDC request is bound to a different proof owner");
+    }
+  } else {
+    const prepared = await postJson(
+      `${input.verifierUrl.replace(/\/$/, "")}/verifier/xrp/XRPPayment/prepareRequest`,
+      {
+        attestationType: toHex("XRPPayment", { size: 32 }),
+        sourceId: toHex("testXRP", { size: 32 }),
+        requestBody: { transactionId: input.transactionId, proofOwner: input.proofOwner },
+      },
+      { "X-API-KEY": input.verifierApiKey },
+    );
+    if (prepared.status !== "VALID" && !(typeof prepared.status === "string" && prepared.status.startsWith("OK"))) {
+      throw new Error(`FDC verifier rejected XRPL payment: ${JSON.stringify(prepared)}`);
+    }
+    const request = prepared.abiEncodedRequest as Hex | undefined;
+    if (!request) throw new Error("FDC verifier response omitted abiEncodedRequest");
+    const now = new Date().toISOString();
+    state = {
+      version: 1,
+      transactionId: input.transactionId,
+      proofOwner: input.proofOwner,
+      requestBytes: request,
+      phase: "PREPARED",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await input.onState?.(state);
   }
-  const request = prepared.abiEncodedRequest as Hex | undefined;
-  if (!request) throw new Error("FDC verifier response omitted abiEncodedRequest");
+  const request = state.requestBytes;
 
   const [fdcHub, flareSystemsManager, relay, fdcVerification] = await Promise.all([
     contractAddress(input.client, "FdcHub"),
@@ -84,52 +126,103 @@ export async function obtainXrpPaymentProof(input: {
     contractAddress(input.client, "Relay"),
     contractAddress(input.client, "FdcVerification"),
   ]);
-  const feeConfig = await input.client.readContract({
-    address: fdcHub,
-    abi: fdcHubAbi,
-    functionName: "fdcRequestFeeConfigurations",
-  });
-  const requestFee = await input.client.readContract({
-    address: feeConfig,
-    abi: fdcRequestFeeAbi,
-    functionName: "getRequestFee",
-    args: [request],
-  });
-  const hash = await input.walletClient.writeContract({
-    address: fdcHub,
-    abi: fdcHubAbi,
-    functionName: "requestAttestation",
-    args: [request],
-    value: requestFee,
-    chain: input.walletClient.chain,
-    account: input.walletClient.account!,
-  });
-  const receipt = await input.client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error(`FDC request transaction reverted: ${hash}`);
-  const block = await input.client.getBlock({ blockNumber: receipt.blockNumber });
-  const [firstRoundStart, roundDuration, protocolId] = await Promise.all([
-    input.client.readContract({
-      address: flareSystemsManager,
-      abi: flareSystemsManagerAbi,
-      functionName: "firstVotingRoundStartTs",
-    }),
-    input.client.readContract({
-      address: flareSystemsManager,
-      abi: flareSystemsManagerAbi,
-      functionName: "votingEpochDurationSeconds",
-    }),
-    input.client.readContract({
-      address: fdcVerification,
-      abi: fdcVerificationAbi,
-      functionName: "fdcProtocolId",
-    }),
-  ]);
-  const votingRoundId = Number((block.timestamp - firstRoundStart) / roundDuration);
+  if (!state.requestTransactionHash || !state.serializedRequestTransaction) {
+    const feeConfig = await input.client.readContract({
+      address: fdcHub,
+      abi: fdcHubAbi,
+      functionName: "fdcRequestFeeConfigurations",
+    });
+    const requestFee = await input.client.readContract({
+      address: feeConfig,
+      abi: fdcRequestFeeAbi,
+      functionName: "getRequestFee",
+      args: [request],
+    });
+    const preparedTransaction = await input.walletClient.prepareTransactionRequest({
+      account: input.walletClient.account!,
+      chain: input.walletClient.chain,
+      to: fdcHub,
+      data: encodeFunctionData({ abi: fdcHubAbi, functionName: "requestAttestation", args: [request] }),
+      value: requestFee,
+    });
+    const serializedRequestTransaction = await input.walletClient.signTransaction(preparedTransaction as never);
+    const hash = keccak256(serializedRequestTransaction);
+    state = {
+      ...state,
+      phase: "SIGNED",
+      requestTransactionHash: hash,
+      serializedRequestTransaction,
+      updatedAt: new Date().toISOString(),
+    };
+    await input.onState?.(state);
+  }
+  const requestTransactionHash = state.requestTransactionHash;
+  const serializedRequestTransaction = state.serializedRequestTransaction;
+  if (!requestTransactionHash || !serializedRequestTransaction) {
+    throw new Error("persisted FDC request omitted its signed transaction");
+  }
+  if (state.phase === "SIGNED" || state.phase === "REQUESTED") {
+    try {
+      const broadcastHash = await input.client.sendRawTransaction({ serializedTransaction: serializedRequestTransaction });
+      if (broadcastHash.toLowerCase() !== requestTransactionHash.toLowerCase()) {
+        throw new Error("FDC broadcast hash did not match the persisted signed transaction");
+      }
+    } catch (error) {
+      // A network failure may happen after the node accepted the exact signed
+      // transaction. If the hash is now visible, continue; otherwise retain
+      // SIGNED so the next run rebroadcasts the same bytes and nonce.
+      const visible = await input.client.getTransaction({ hash: requestTransactionHash }).then(() => true).catch(async () =>
+        input.client.getTransactionReceipt({ hash: requestTransactionHash }).then(() => true).catch(() => false));
+      if (!visible) throw error;
+    }
+    if (state.phase !== "REQUESTED") {
+      state = { ...state, phase: "REQUESTED", updatedAt: new Date().toISOString() };
+      await input.onState?.(state);
+    }
+  }
+  const receipt = await input.client.waitForTransactionReceipt({ hash: requestTransactionHash });
+  if (receipt.status !== "success") throw new Error(`FDC request transaction reverted: ${requestTransactionHash}`);
+  if (state.votingRoundId === undefined || state.protocolId === undefined || !state.relay) {
+    const block = await input.client.getBlock({ blockNumber: receipt.blockNumber });
+    const [firstRoundStart, roundDuration, protocolId] = await Promise.all([
+      input.client.readContract({
+        address: flareSystemsManager,
+        abi: flareSystemsManagerAbi,
+        functionName: "firstVotingRoundStartTs",
+      }),
+      input.client.readContract({
+        address: flareSystemsManager,
+        abi: flareSystemsManagerAbi,
+        functionName: "votingEpochDurationSeconds",
+      }),
+      input.client.readContract({
+        address: fdcVerification,
+        abi: fdcVerificationAbi,
+        functionName: "fdcProtocolId",
+      }),
+    ]);
+    state = {
+      ...state,
+      phase: "ROUND_IDENTIFIED",
+      requestBlockNumber: receipt.blockNumber.toString(),
+      votingRoundId: Number((block.timestamp - firstRoundStart) / roundDuration),
+      protocolId: Number(protocolId),
+      relay,
+      updatedAt: new Date().toISOString(),
+    };
+    await input.onState?.(state);
+  }
+  const votingRoundId = state.votingRoundId;
+  const protocolId = state.protocolId;
+  const relayAddress = state.relay;
+  if (votingRoundId === undefined || protocolId === undefined || !relayAddress) {
+    throw new Error("persisted FDC request omitted finalized-round metadata");
+  }
 
   const finalizationDeadline = Date.now() + 20 * 60_000;
   for (;;) {
     const finalized = await input.client.readContract({
-      address: relay,
+      address: relayAddress,
       abi: relayAbi,
       functionName: "isFinalized",
       args: [BigInt(protocolId), BigInt(votingRoundId)],
@@ -149,8 +242,11 @@ export async function obtainXrpPaymentProof(input: {
       if (typeof result.response_hex === "string") {
         const [data] = decodeAbiParameters([responseAbi], result.response_hex as Hex);
         return {
-          merkleProof: (result.proof as readonly Hex[] | undefined) ?? [],
-          data: data as XrpPaymentResponse,
+          proof: {
+            merkleProof: (result.proof as readonly Hex[] | undefined) ?? [],
+            data: data as XrpPaymentResponse,
+          },
+          state,
         };
       }
     } catch (error) {

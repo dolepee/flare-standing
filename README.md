@@ -5,8 +5,8 @@ bounded FXRP mandate, a permissionless keeper charges it on schedule, and the
 subscriber can cancel onchain and recover every unused unit without asking the
 merchant.
 
-[Live Coston2 app](https://standing-flare.vercel.app) ·
-[Evidence](https://standing-flare.vercel.app/evidence) ·
+[Live Coston2 app](https://standing.dolepee.com) ·
+[Evidence](https://standing.dolepee.com/evidence) ·
 [Deployed contract](https://coston2-explorer.flare.network/address/0x8a29c741280554028d76666dc75558d98caab855)
 
 ## Why Flare is load-bearing
@@ -29,7 +29,9 @@ The public app has five operating surfaces plus shareable checkout and access
 routes:
 
 - `/plans` discovers live merchant plans.
-- `/checkout/:planId` opens a bounded prepaid mandate.
+- `/checkout/:planId` previews the gated V2 checkout while the public app still
+  points at the verified V1 proof deployment. It will open and charge a bounded
+  prepaid mandate only after the reviewed V2 cutover.
 - `/mandates` manages top-ups, cancellation, refunds, and due charges.
 - `/access/:mandateId` demonstrates an entitlement derived from the latest
   successful charge.
@@ -44,11 +46,13 @@ neutral onchain labeling.
 ## Protocol flow
 
 1. A merchant creates a fixed-FXRP or USD-priced plan.
-2. A subscriber approves FXRP and opens a mandate with a chosen capacity.
+2. A subscriber approves FXRP and opens a mandate with a chosen capacity. The
+   V2 path charges the first period in that same transaction, bounded by an
+   explicit maximum initial FXRP amount.
 3. Any keeper calls `charge` at `nextChargeAt`.
 4. A successful charge credits the merchant and protocol fee ledgers. An
-   underfunded charge is blocked and advances the schedule without creating
-   debt.
+   underfunded charge creates no debt and remains due, so a top-up can be
+   retried immediately.
 5. The subscriber can cancel at any time. Later charges revert, and the unused
    balance becomes withdrawable.
 
@@ -80,9 +84,17 @@ remaining balance exceeds its recorded deposits.
 
 ## Keeper operation
 
-`script/standing-keeper.sh` is the supervised keeper entry point. It verifies
-chain ID 114, reads the latest chain timestamp, discovers due active mandates,
-and simulates every candidate before any write.
+`tools/keeper` is the candidate hosted Coston2 keeper. It verifies chain ID 114, pages
+through public mandate state, withholds known-underfunded charges, simulates
+every candidate, and accepts success only when the receipt contains the bound
+`ChargeExecuted` event. Per-mandate failures are isolated so one bad item does
+not prevent later mandates from being checked. The scheduled GitHub Actions
+worker is configured for a dedicated low-balance Coston2 key and never receives
+custody. It is not a live-uptime claim until the reviewed workflow runs from the
+default branch and that key records a charge receipt.
+
+`script/standing-keeper.sh` remains the read-only-by-default local operator
+entry point:
 
 Read-only scan, which requires no key:
 
@@ -90,12 +102,12 @@ Read-only scan, which requires no key:
 script/standing-keeper.sh --once
 ```
 
-An explicit live run requires `RUN_LIVE=1` and a dedicated
-`KEEPER_PRIVATE_KEY`. A failed transaction is logged and is not retried within
-the same scan. `--loop` uses a process lock to prevent duplicate local workers.
-No keeper service is installed or activated by this repository.
+An explicit local live run requires `RUN_LIVE=1` and a dedicated
+`KEEPER_PRIVATE_KEY`. `--loop` uses a process lock to prevent duplicate local
+workers. GitHub Actions scheduling is best-effort, so showcase plan cadences
+are no shorter than its operating interval.
 
-## Current Coston2 deployment
+## Current Coston2 proof deployment
 
 | Component | Address |
 |---|---|
@@ -112,7 +124,10 @@ The controlled validation proves:
 - an XRPL testnet direct mint that produced 10 FXRP on Coston2 in 153 observed
   seconds;
 - one atomic 1.2 XRP testnet payment that direct-minted FXRP and opened Standing
-  mandate 5 with exactly 1 FXRP of prepaid capacity.
+  mandate 5 with exactly 1 FXRP of prepaid capacity; and
+- a permissionless charge, submitted by the existing Coston2 operator, that
+  later activated that historical pending mandate without the subscriber key
+  or custody.
 
 Every transaction and the exact claim boundary is recorded in
 [`docs/VALIDATION_LOG.md`](docs/VALIDATION_LOG.md). This is builder-controlled
@@ -121,9 +136,14 @@ testnet evidence.
 The atomic proof is independently replayable from its
 [XRPL payment](https://testnet.xrpl.org/transactions/09BFC17FE831A80069362F34F56EC98B348787A143EA46C313811DC3E178729A)
 and [Coston2 execution](https://coston2-explorer.flare.network/tx/0x712d68f0a2672123fdc2b18bef1df6eb85d0539b00dc3011c5321aa8342b9064).
-The latter stores mandate 5 for plan 4 with `1,000,000` atomic FXRP deposited
-and remaining. This is controlled-builder testnet proof, not mainnet usage or
-external adoption.
+The atomic execution stored mandate 5 for plan 4 with `1,000,000` atomic FXRP
+deposited and initially remaining. A later permissionless
+[keeper charge](https://coston2-explorer.flare.network/tx/0xb258435a89008c683ada18df9f549a44b4eb391066cb90db8d6f6ba201860b7c)
+activated access and left `902,058` atomic FTestXRP. The candidate V2 source
+proposes same-transaction initial charging; it is not a reviewed or deployed
+claim until Codex clears the exact source and the V2 address and fresh proof are
+recorded here. This is controlled-builder testnet evidence, not mainnet usage
+or external adoption.
 
 ## Controlled external Coston2 pilot
 
@@ -156,7 +176,10 @@ end-to-end browser UX claim.
 - `src/StandingMandates.sol`: plan, mandate, charge, cancellation, and ledger
   state machine.
 - `src/FtsoPriceAdapter.sol`: USD-micro to FXRP conversion through FTSO.
-- `script/standing-keeper.sh`: read-only-by-default supervised keeper.
+- `tools/atomic-subscribe/`: review-first XRPL authorization, resumable FDC
+  proof execution, delayed-mint recovery, and XRP-authorized cancellation.
+- `tools/keeper/`: scheduled, permissionless Coston2 charge worker.
+- `script/standing-keeper.sh`: read-only-by-default local keeper.
 - `app/`: Vite/React Coston2 application.
 - `test/`: regression, adversarial token, boundary, and stateful invariant
   coverage.

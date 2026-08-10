@@ -16,7 +16,7 @@ export function MandatesPage() {
   return (
     <div className="page">
       <section className="page-heading split-heading">
-        <div><span className="eyebrow">Payment controls</span><h1>Mandates</h1><p>Top up, charge, cancel, or recover unused FXRP from one place.</p></div>
+        <div><span className="eyebrow">Coston2 testnet controls</span><h1>Testnet mandates</h1><p>Top up, charge, cancel, or recover unused FTestXRP from one place.</p></div>
         <div className="segmented" role="group" aria-label="Mandate view">
           <button type="button" className={view === 'mine' ? 'active' : ''} onClick={() => setView('mine')}>My mandates</button>
           <button type="button" className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>All activity</button>
@@ -30,4 +30,3 @@ export function MandatesPage() {
     </div>
   )
 }
-

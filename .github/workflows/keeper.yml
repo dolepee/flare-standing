@@ -1,0 +1,38 @@
+name: Coston2 Keeper
+
+permissions: {}
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: standing-coston2-keeper
+  cancel-in-progress: false
+
+jobs:
+  charge-due-mandates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: tools/keeper
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/keeper/package-lock.json
+      - run: npm ci --omit=dev
+      - name: Charge due Coston2 mandates
+        env:
+          COSTON2_RPC: https://coston2-api.flare.network/ext/C/rpc
+          STANDING_ADDRESS: ${{ vars.STANDING_ADDRESS }}
+          KEEPER_PRIVATE_KEY: ${{ secrets.COSTON2_KEEPER_PRIVATE_KEY }}
+        run: npm start

@@ -15,6 +15,8 @@ describe('getPlanProfile', () => {
   it('returns curated identity only for the bound onchain merchant', () => {
     expect(getPlanProfile(catalogedPlan).name).toBe('FTSO Creator Pass')
     expect(getPlanProfile({ ...catalogedPlan, merchant: '0x1111111111111111111111111111111111111111' }).name)
-      .toBe('Standing recurring plan')
+      .toBe('Onchain recurring plan')
+    expect(getPlanProfile({ ...catalogedPlan, merchant: '0x1111111111111111111111111111111111111111' }).merchantName)
+      .toBe('Unattributed onchain merchant')
   })
 })

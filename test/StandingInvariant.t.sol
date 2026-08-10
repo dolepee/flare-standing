@@ -58,10 +58,16 @@ contract StandingHandler is Test {
     }
 
     function open(uint96 rawAmount) external {
-        uint256 amount = bound(uint256(rawAmount), 1, 10_000_000);
+        bool chargeImmediately = rawAmount % 2 == 0;
+        uint256 minimum = chargeImmediately ? 1_000_000 : 1;
+        uint256 amount = bound(uint256(rawAmount), minimum, 10_000_000);
         token.mint(address(this), amount);
         token.approve(address(standing), amount);
-        standing.openMandate(planId, amount);
+        if (chargeImmediately) {
+            standing.openMandateAndCharge(planId, amount, 1_000_000);
+        } else {
+            standing.openMandate(planId, amount);
+        }
     }
 
     function topUp(uint256 seed, uint96 rawAmount) external {

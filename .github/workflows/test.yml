@@ -63,3 +63,53 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm audit --omit=dev
+
+  keeper:
+    name: Keeper service
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: tools/keeper
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/keeper/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --omit=dev
+
+  app:
+    name: App and deployment surfaces
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Check canonical Coston2 deployment surfaces
+        working-directory: .
+        env:
+          KEEPER_STANDING_ADDRESS: ${{ vars.STANDING_ADDRESS }}
+        run: node script/check-deployment-consistency.mjs
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser

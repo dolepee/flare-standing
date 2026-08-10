@@ -7,8 +7,7 @@ export function Brand() {
         <span />
       </span>
       <span className="brand-name">Standing</span>
-      <span className="testnet-label">Coston2</span>
+      <span className="testnet-label" aria-label="Coston2 testnet"><span>Coston2 · </span>testnet</span>
     </div>
   )
 }
-

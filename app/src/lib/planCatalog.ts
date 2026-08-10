@@ -23,9 +23,9 @@ const planCatalog: Record<string, CatalogEntry> = {
     merchant: REFERENCE_MERCHANT,
     name: 'Builder Access Pass',
     merchantName: 'Standing Reference Merchant',
-    summary: 'A fixed-FXRP plan for testing recurring mandate controls.',
+    summary: 'A fixed-FTestXRP fixture for testing recurring mandate controls.',
     description:
-      'Fund a bounded FXRP mandate, let the scheduled charge execute, and retain unilateral cancellation and refund rights.',
+      'Fund a bounded FTestXRP mandate, let the scheduled charge execute, and retain unilateral cancellation and refund rights.',
     accessTitle: 'Builder operations brief',
     accessSummary: 'A sample member update unlocked by a successful recurring charge.',
     benefits: ['Bounded prepaid capacity', 'Permissionless scheduled charges', 'Onchain cancellation and refund'],
@@ -35,25 +35,25 @@ const planCatalog: Record<string, CatalogEntry> = {
     merchant: REFERENCE_MERCHANT,
     name: 'FTSO Creator Pass',
     merchantName: 'Standing Reference Merchant',
-    summary: 'A USD-priced membership settled in FXRP using Flare FTSO.',
+    summary: 'A USD-priced test membership settled in FTestXRP using Flare FTSO.',
     description:
-      'The plan stays denominated in USD while each successful charge resolves to FXRP through the live Flare price feed.',
+      'The plan stays denominated in USD while each successful Coston2 charge resolves to FTestXRP through the Flare price feed.',
     accessTitle: 'Creator member dispatch',
     accessSummary: 'A sample subscriber edition unlocked by the latest successful charge.',
-    benefits: ['USD-denominated plan', 'Live FTSO conversion', 'Cancel-anytime mandate'],
+    benefits: ['USD-denominated plan', 'Coston2 FTSO conversion', 'Cancel-anytime mandate'],
     operatorControlled: true,
   },
 }
 
 const fallbackProfile: PlanProfile = {
-  name: 'Standing recurring plan',
-  merchantName: 'Independent merchant',
-  summary: 'A merchant-owned recurring payment plan settled in FXRP.',
+  name: 'Onchain recurring plan',
+  merchantName: 'Unattributed onchain merchant',
+  summary: 'A Coston2 plan whose merchant identity is represented only by its address.',
   description:
-    'Prepay a bounded mandate, pay only on the plan schedule, and recover unused FXRP after cancellation.',
+    'Prepay a bounded testnet mandate, pay only on the onchain schedule, and recover unused FTestXRP after cancellation.',
   accessTitle: 'Subscriber access',
   accessSummary: 'Access is controlled by the latest successful onchain charge.',
-  benefits: ['Bounded prepaid capacity', 'Merchant-owned billing terms', 'Subscriber-controlled cancellation'],
+  benefits: ['Bounded prepaid capacity', 'Address-owned billing terms', 'Subscriber-controlled cancellation'],
   operatorControlled: false,
 }
 

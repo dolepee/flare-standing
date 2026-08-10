@@ -1,19 +1,38 @@
 # Standing Security Notes
 
-## Hardened candidate
+## Hardened V2 candidate
 
-The current source adds five protections after the first Coston2 validation deployment:
+The current source adds these protections after the first Coston2 validation deployment:
 
 1. **Exact token accounting.** Mandate deposits, top-ups, and withdrawals verify exact contract and recipient balance deltas. Fee-on-transfer or otherwise non-conserving behavior reverts atomically instead of recording liabilities the contract did not receive or payouts the recipient did not receive.
 2. **Merchant-scoped plan control.** A merchant creates and activates or deactivates only its own plans. The protocol owner cannot mutate merchant plan state.
-3. **Explicit cancellation before withdrawal.** An active mandate cannot be withdrawn merely because its next charge is due. The subscriber must cancel first, making the cancellation state and blocked-future-charge guarantee explicit onchain.
+3. **Explicit, drift-safe cancellation before withdrawal.** An active mandate cannot be withdrawn merely because its next charge is due. The subscriber can cancel first or use `cancelAndWithdrawExact`, which cancels and withdraws atomically only when the remaining balance still equals the amount reviewed by the subscriber.
 4. **Cross-function reentrancy protection.** Cancellation uses the same guard as token- and oracle-calling entry points, preventing a subscriber contract from changing mandate state during a token or price-adapter callback.
 5. **Observable administration.** Pause and ownership changes emit events, and the release source pins Solidity `0.8.28`.
+6. **Immediate first value.** `openMandateAndCharge` opens the mandate and
+   charges the first period atomically, so a successful subscription does not
+   begin in a pending-access state.
+7. **User-reviewed FTSO ceiling.** The initial charge is resolved before token
+   pull and must not exceed the subscriber's explicit maximum FXRP amount.
+8. **Retry-safe underfunding.** A blocked recurring charge no longer advances
+   the due timestamp. After a top-up, the same due period can be retried without
+   waiting for another cadence boundary.
+9. **Recoverable cross-chain execution.** Atomic tooling persists signed FDC
+   request and execution transactions before broadcast, resumes delayed direct
+   mints from the same proof, and binds completion to the exact XRPL payment,
+   Smart Account, mandate, charge, and stored state.
+10. **Subscriber-authorized remote exit.** A separate review-first XRPL 0xFE
+   operation calls `cancelAndWithdrawExact` to return the reviewed unused FXRP
+   to the same Flare Personal Account without giving the executor custody. A
+   keeper front-run changes the balance and atomically reverts the exit instead
+   of silently returning less. It does not claim to redeem that FXRP back to
+   native XRP.
 
 Regression tests cover inbound and outbound transfer fees, false-return and
 no-return tokens, accounting rollback, unauthorized plan and mandate mutation,
 schedule boundaries, exact withdrawals, ownership transfer, stale and invalid
-FTSO results, and withdrawal from a due but active mandate.
+FTSO results, withdrawal from a due but active mandate, keeper/front-run balance
+drift, and same-key executor-process exclusion.
 
 Two stateful invariants run 256 sequences and 128,000 calls each:
 
@@ -32,22 +51,25 @@ as an independent audit finding.
 
 The historical Coston2 contract at `0xa1ccfe102946be49b7f2224b16402465d46a7c94` predates these changes. Its transaction history remains valid evidence for the initial technical spike, but it is not the hardened release candidate.
 
-Adopting this source requires a new Coston2 deployment from a reviewed commit, followed by a fresh create, open, charge, cancel, blocked-charge, and withdrawal proof set. No proxy or upgrade path exists, so the historical contract cannot be modified in place.
+Adopting this source requires a new Coston2 deployment from a reviewed commit,
+followed by a fresh immediate-open, recurring charge, underfunded retry,
+cancellation, and withdrawal proof set. No proxy or upgrade path exists, so
+the historical contract cannot be modified in place.
 
 ## Remaining boundaries
 
 - The accepted asset must be the verified FXRP/FTestXRP deployment configured at construction.
 - The owner can pause new mandate openings, top-ups, and charges, but cannot block cancellation or withdrawal of already-canceled funds.
 - The keeper is permissionless and does not receive custody.
-- The shell keeper is read-only by default, validates Coston2 chain ID, simulates
-  each due charge, and requires an explicit live mode plus dedicated key. It is
-  operational tooling, not a hosted uptime claim.
+- The candidate hosted-keeper workflow is configured for a dedicated
+  low-balance key, bounded stateless paging, preflight affordability checks,
+  simulation, and receipt-event verification. It is not a live-uptime claim
+  until the reviewed workflow runs from the default branch and the dedicated
+  key records a receipt. GitHub Actions scheduling remains best-effort and is
+  not a precise-cadence guarantee. The shell keeper remains read-only by default.
 - The client-side entitlement route is a reference integration, not a secure
   content boundary. A production merchant must authenticate the subscriber
   wallet and enforce entitlement server-side.
-- `npm audit` currently reports the React Router RSC action-processing advisory
-  against the latest stable `7.18.2`. Standing is a static `BrowserRouter` SPA:
-  it has no React Server Components, server actions, or React Router server
-  request handler, so the affected path is not reachable here. The dependency
-  remains pinned for prompt upgrade when a patched stable release is available.
+- The app, atomic tool, and hosted-keeper package audits each report zero known
+  vulnerabilities on the 2026-08-10 candidate tree.
 - This is internal project hardening, not an independent external audit.

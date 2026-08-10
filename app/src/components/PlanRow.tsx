@@ -11,7 +11,7 @@ import { Status } from './Status'
 export function PlanRow({ plan }: { plan: StandingPlan }) {
   const { account, execute } = useWallet()
   const { refresh } = useProtocol()
-  const price = plan.priceUsdMicro > 0n ? formatUsdMicro(plan.priceUsdMicro) : `${formatFxrp(plan.priceFxrp)} FXRP`
+  const price = plan.priceUsdMicro > 0n ? formatUsdMicro(plan.priceUsdMicro) : `${formatFxrp(plan.priceFxrp)} FTestXRP`
   const isMerchant = isSameAddress(account, plan.merchant)
   const profile = getPlanProfile(plan)
 
@@ -34,7 +34,7 @@ export function PlanRow({ plan }: { plan: StandingPlan }) {
           <strong>{profile.name}</strong>
           <Status tone={plan.active ? 'good' : 'warning'}>{plan.active ? 'Active' : 'Paused'}</Status>
         </div>
-        <span>{price} every {formatPeriod(plan.periodSeconds)} · {profile.merchantName === 'Independent merchant' ? shortAddress(plan.merchant) : profile.merchantName}</span>
+        <span>{price} every {formatPeriod(plan.periodSeconds)} · {profile.operatorControlled ? profile.merchantName : `Onchain merchant ${shortAddress(plan.merchant)}`}</span>
       </div>
       <div className="plan-actions">
         {isMerchant ? (
@@ -44,10 +44,10 @@ export function PlanRow({ plan }: { plan: StandingPlan }) {
         ) : null}
         {plan.active ? (
           <Link className="button button-secondary" to={`/checkout/${plan.id.toString()}`}>
-            Subscribe <ArrowUpRight size={15} aria-hidden="true" />
+            Open test checkout <ArrowUpRight size={15} aria-hidden="true" />
           </Link>
         ) : (
-          <button className="button button-secondary" type="button" disabled>Subscribe</button>
+          <button className="button button-secondary" type="button" disabled>Checkout paused</button>
         )}
       </div>
     </article>

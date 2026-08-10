@@ -23,6 +23,13 @@ export const masterAccountControllerAbi = [
     inputs: [{ name: "personalAccount", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "isTransactionIdUsed",
+    stateMutability: "view",
+    inputs: [{ name: "transactionId", type: "bytes32" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
 ] as const;
 
 export const assetManagerAbi = [
@@ -61,6 +68,17 @@ export const assetManagerAbi = [
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "directMintingDelayState",
+    stateMutability: "view",
+    inputs: [{ name: "transactionId", type: "bytes32" }],
+    outputs: [
+      { name: "delayState", type: "uint8" },
+      { name: "allowedAt", type: "uint256" },
+      { name: "startedAt", type: "uint256" },
+    ],
+  },
 ] as const;
 
 export const standingAbi = [
@@ -70,6 +88,20 @@ export const standingAbi = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "priceAdapter",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "maxPriceAge",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
@@ -86,11 +118,36 @@ export const standingAbi = [
   },
   {
     type: "function",
-    name: "openMandate",
+    name: "openMandateAndCharge",
     stateMutability: "nonpayable",
     inputs: [
       { name: "planId", type: "uint256" },
       { name: "depositAmount", type: "uint256" },
+      { name: "maxInitialChargeFxrp", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "cancel",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "mandateId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdrawMandate",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "mandateId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "cancelAndWithdrawExact",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "mandateId", type: "uint256" },
+      { name: "expectedRemaining", type: "uint256" },
     ],
     outputs: [],
   },
@@ -107,6 +164,19 @@ export const standingAbi = [
       { name: "nextChargeAt", type: "uint256" },
       { name: "lastChargeAt", type: "uint256" },
       { name: "canceled", type: "bool" },
+    ],
+  },
+] as const;
+
+export const priceAdapterAbi = [
+  {
+    type: "function",
+    name: "getFxrpForUsdMicro",
+    stateMutability: "view",
+    inputs: [{ name: "usdMicro", type: "uint256" }],
+    outputs: [
+      { name: "fxrpAmount", type: "uint256" },
+      { name: "updatedAt", type: "uint256" },
     ],
   },
 ] as const;
@@ -164,6 +234,26 @@ export const standingEventsAbi = [
       { name: "subscriber", type: "address", indexed: true },
       { name: "deposited", type: "uint256", indexed: false },
       { name: "firstChargeAt", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChargeExecuted",
+    inputs: [
+      { name: "mandateId", type: "uint256", indexed: true },
+      { name: "merchant", type: "address", indexed: true },
+      { name: "merchantAmount", type: "uint256", indexed: false },
+      { name: "feeAmount", type: "uint256", indexed: false },
+      { name: "nextChargeAt", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "MandateWithdrawn",
+    inputs: [
+      { name: "mandateId", type: "uint256", indexed: true },
+      { name: "subscriber", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
     ],
   },
 ] as const;
@@ -299,6 +389,29 @@ export const directMintingExecuteAbi = [
   },
 ] as const;
 
+export const directMintingEventsAbi = [
+  {
+    type: "event",
+    name: "DirectMintingDelayed",
+    anonymous: false,
+    inputs: [
+      { name: "transactionId", type: "bytes32", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "executionAllowedAt", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "LargeDirectMintingDelayed",
+    anonymous: false,
+    inputs: [
+      { name: "transactionId", type: "bytes32", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "executionAllowedAt", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
 export const userOperationExecutedAbi = [
   {
     type: "event",
@@ -307,6 +420,22 @@ export const userOperationExecutedAbi = [
     inputs: [
       { name: "personalAccount", type: "address", indexed: true },
       { name: "nonce", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+export const smartAccountDirectMintingEventsAbi = [
+  {
+    type: "event",
+    name: "DirectMintingExecuted",
+    anonymous: false,
+    inputs: [
+      { name: "personalAccount", type: "address", indexed: true },
+      { name: "transactionId", type: "bytes32", indexed: true },
+      { name: "sourceAddress", type: "string", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "executorFee", type: "uint256", indexed: false },
+      { name: "executor", type: "address", indexed: false },
     ],
   },
 ] as const;

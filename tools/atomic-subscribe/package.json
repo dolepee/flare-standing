@@ -8,6 +8,9 @@
     "preview": "tsx src/preview.ts",
     "send": "tsx src/send.ts",
     "execute": "tsx src/execute.ts",
+    "control:preview": "tsx src/control-preview.ts",
+    "control:send": "tsx src/control-send.ts",
+    "control:execute": "tsx src/execute.ts",
     "test": "vitest run"
   },
   "dependencies": {

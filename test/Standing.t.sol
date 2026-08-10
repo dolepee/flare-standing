@@ -53,6 +53,131 @@ contract StandingTest is Test {
         assertEq(standing.contractBalance(), CHARGE_USEC * 10);
     }
 
+    function test_OpenMandateAndChargeActivatesImmediatelyForFixedPlan() public {
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+        uint256 openedAt = block.timestamp;
+        token.approve(address(standing), CHARGE_USEC * 3);
+
+        standing.openMandateAndCharge(planId, CHARGE_USEC * 3, CHARGE_USEC);
+
+        StandingMandates.Mandate memory state = standing.mandate(1);
+        assertEq(state.planId, planId);
+        assertEq(state.subscriber, address(this));
+        assertEq(state.deposited, CHARGE_USEC * 3);
+        assertEq(state.remaining, CHARGE_USEC * 2);
+        assertEq(state.lastChargeAt, openedAt);
+        assertEq(state.nextChargeAt, openedAt + 60);
+        assertFalse(state.canceled);
+        assertEq(standing.merchantBalance(MERCHANT), 990_000);
+        assertEq(standing.protocolFeeBalance(TREASURY), 10_000);
+        assertEq(standing.contractBalance(), CHARGE_USEC * 3);
+    }
+
+    function test_OpenMandateAndChargeHonorsFtsoMaximumBeforePull() public {
+        uint256 planId = _createUsdPlan(2_500_000);
+        oracle.setMockRate(2_500_000_000_000_000_000, block.timestamp);
+        token.approve(address(standing), CHARGE_USEC * 3);
+        uint256 balanceBefore = token.balanceOf(address(this));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(StandingMandates.InitialChargeExceedsMaximum.selector, CHARGE_USEC, CHARGE_USEC - 1)
+        );
+        standing.openMandateAndCharge(planId, CHARGE_USEC * 3, CHARGE_USEC - 1);
+
+        assertEq(standing.mandateCount(), 0);
+        assertEq(token.balanceOf(address(this)), balanceBefore);
+        assertEq(standing.contractBalance(), 0);
+
+        standing.openMandateAndCharge(planId, CHARGE_USEC * 3, CHARGE_USEC);
+        assertEq(standing.mandate(1).remaining, CHARGE_USEC * 2);
+    }
+
+    function test_OpenMandateAndChargeRejectsUnderfundedDepositWithoutMutation() public {
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+        token.approve(address(standing), CHARGE_USEC);
+        uint256 balanceBefore = token.balanceOf(address(this));
+
+        vm.expectRevert(StandingMandates.InsufficientBalance.selector);
+        standing.openMandateAndCharge(planId, CHARGE_USEC - 1, CHARGE_USEC);
+
+        assertEq(standing.mandateCount(), 0);
+        assertEq(token.balanceOf(address(this)), balanceBefore);
+        assertEq(standing.merchantBalance(MERCHANT), 0);
+        assertEq(standing.protocolFeeBalance(TREASURY), 0);
+    }
+
+    function test_OpenMandateAndChargeRejectsStalePriceBeforePull() public {
+        uint256 planId = _createUsdPlan(1_000_000);
+        oracle.setMockRate(1_000_000_000_000_000_000, block.timestamp);
+        token.approve(address(standing), CHARGE_USEC * 2);
+        uint256 balanceBefore = token.balanceOf(address(this));
+        vm.warp(block.timestamp + 301);
+
+        vm.expectRevert(StandingMandates.StalePrice.selector);
+        standing.openMandateAndCharge(planId, CHARGE_USEC * 2, CHARGE_USEC * 2);
+
+        assertEq(standing.mandateCount(), 0);
+        assertEq(token.balanceOf(address(this)), balanceBefore);
+        assertEq(standing.contractBalance(), 0);
+    }
+
+    function test_ImmediateChargeCanBeCanceledAndOnlyUnusedDepositIsRefunded() public {
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+        token.approve(address(standing), CHARGE_USEC * 3);
+        uint256 balanceBefore = token.balanceOf(address(this));
+        standing.openMandateAndCharge(planId, CHARGE_USEC * 3, CHARGE_USEC);
+
+        standing.cancel(1);
+        standing.withdrawMandate(1);
+
+        assertEq(token.balanceOf(address(this)), balanceBefore - CHARGE_USEC);
+        assertEq(standing.mandate(1).remaining, 0);
+        assertEq(standing.merchantBalance(MERCHANT), 990_000);
+        assertEq(standing.protocolFeeBalance(TREASURY), 10_000);
+        assertEq(standing.contractBalance(), CHARGE_USEC);
+    }
+
+    function test_CancelAndWithdrawExactRejectsKeeperFrontRunDriftAtomically() public {
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+        token.approve(address(standing), CHARGE_USEC * 3);
+        standing.openMandateAndCharge(planId, CHARGE_USEC * 3, CHARGE_USEC);
+        uint256 reviewedRemaining = standing.mandate(1).remaining;
+        assertEq(reviewedRemaining, CHARGE_USEC * 2);
+
+        vm.warp(standing.mandate(1).nextChargeAt);
+        standing.charge(1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(StandingMandates.RemainingBalanceChanged.selector, reviewedRemaining, CHARGE_USEC)
+        );
+        standing.cancelAndWithdrawExact(1, reviewedRemaining);
+
+        StandingMandates.Mandate memory unchanged = standing.mandate(1);
+        assertFalse(unchanged.canceled);
+        assertEq(unchanged.deposited, CHARGE_USEC * 3);
+        assertEq(unchanged.remaining, CHARGE_USEC);
+
+        standing.cancelAndWithdrawExact(1, CHARGE_USEC);
+        StandingMandates.Mandate memory recovered = standing.mandate(1);
+        assertTrue(recovered.canceled);
+        assertEq(recovered.deposited, 0);
+        assertEq(recovered.remaining, 0);
+    }
+
+    function test_CancelAndWithdrawExactSupportsAlreadyCanceledMandate() public {
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+        token.approve(address(standing), CHARGE_USEC * 2);
+        standing.openMandate(planId, CHARGE_USEC * 2);
+        standing.cancel(1);
+
+        standing.cancelAndWithdrawExact(1, CHARGE_USEC * 2);
+
+        StandingMandates.Mandate memory recovered = standing.mandate(1);
+        assertTrue(recovered.canceled);
+        assertEq(recovered.deposited, 0);
+        assertEq(recovered.remaining, 0);
+    }
+
     function test_CancelThenWithdraw() public {
         uint256 planId = _createFixedPlan(CHARGE_USEC);
         token.approve(address(standing), CHARGE_USEC * 2);
@@ -80,8 +205,19 @@ contract StandingTest is Test {
         standing.openMandate(planId, CHARGE_USEC / 2);
 
         vm.warp(block.timestamp + 61);
+        uint256 dueAt = standing.mandate(1).nextChargeAt;
         standing.charge(1);
         StandingMandates.Mandate memory state = standing.mandate(1);
+        assertEq(state.nextChargeAt, dueAt);
+        assertEq(state.lastChargeAt, 0);
+
+        token.approve(address(standing), CHARGE_USEC / 2);
+        standing.topUp(1, CHARGE_USEC / 2);
+        standing.charge(1);
+
+        state = standing.mandate(1);
+        assertEq(state.remaining, 0);
+        assertEq(state.lastChargeAt, block.timestamp);
         assertEq(state.nextChargeAt, block.timestamp + 60);
     }
 
@@ -237,6 +373,28 @@ contract StandingTest is Test {
         assertEq(state.deposited, CHARGE_USEC);
         assertEq(state.remaining, CHARGE_USEC);
     }
+
+    function test_TokenCallbackCannotMutateExistingMandateDuringImmediateOpen() public {
+        ReentrantSubscriberToken callbackToken = new ReentrantSubscriberToken();
+        StandingMandates callbackStanding =
+            new StandingMandates(address(callbackToken), address(adapter), TREASURY, 100, 300);
+        callbackToken.mint(address(callbackToken), CHARGE_USEC * 3);
+
+        vm.prank(MERCHANT);
+        uint256 planId = callbackStanding.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        callbackToken.openAsSubscriber(callbackStanding, planId, CHARGE_USEC);
+        callbackToken.setAttack(callbackStanding, 1, true);
+
+        vm.expectRevert(StandingMandates.InsufficientBalance.selector);
+        callbackToken.openAndChargeAsSubscriber(callbackStanding, planId, CHARGE_USEC, CHARGE_USEC);
+
+        assertEq(callbackStanding.mandateCount(), 1);
+        StandingMandates.Mandate memory existing = callbackStanding.mandate(1);
+        assertFalse(existing.canceled);
+        assertEq(existing.remaining, CHARGE_USEC);
+        assertEq(callbackStanding.merchantBalance(MERCHANT), 0);
+        assertEq(callbackStanding.protocolFeeBalance(TREASURY), 0);
+    }
 }
 
 contract MockFxrpToken {
@@ -374,6 +532,16 @@ contract ReentrantSubscriberToken {
     function openAsSubscriber(StandingMandates standing, uint256 planId, uint256 amount) external {
         allowance[address(this)][address(standing)] = amount * 2;
         standing.openMandate(planId, amount);
+    }
+
+    function openAndChargeAsSubscriber(
+        StandingMandates standing,
+        uint256 planId,
+        uint256 amount,
+        uint256 maxInitialChargeFxrp
+    ) external {
+        allowance[address(this)][address(standing)] = amount;
+        standing.openMandateAndCharge(planId, amount, maxInitialChargeFxrp);
     }
 
     function topUpAsSubscriber(StandingMandates standing, uint256 mandateId, uint256 amount) external {
