@@ -2,9 +2,13 @@ import { CheckCircle2, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { COSTON2_EXPLORER, FTSO_ADAPTER_ADDRESS, STANDING_ADDRESS } from '../config'
 import { ATOMIC_PROOF } from '../lib/atomicProof'
+import { JUDGE_DEMO } from '../lib/judgeDemo'
 
 const proofRows = [
   { label: 'Standing V2 deployment', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.deployTransaction, href: ATOMIC_PROOF.deployHref },
+  { label: 'Durable showcase plan 2 created', network: `Flare Coston2 testnet · block ${JUDGE_DEMO.planCreationBlock.toLocaleString('en-US')}`, value: JUDGE_DEMO.planTransaction, href: JUDGE_DEMO.planHref },
+  { label: 'Durable showcase XRP authorization', network: 'XRPL Testnet · 0.3 XRP', value: JUDGE_DEMO.xrplTransaction, href: JUDGE_DEMO.xrplHref },
+  { label: 'Durable showcase open + first charge', network: `Flare Coston2 testnet · block ${JUDGE_DEMO.openingBlock.toLocaleString('en-US')}`, value: JUDGE_DEMO.coston2Transaction, href: JUDGE_DEMO.coston2Href },
   { label: 'Atomic XRP Access plan created', network: 'Flare Coston2 testnet', value: ATOMIC_PROOF.planTransaction, href: ATOMIC_PROOF.planHref },
   { label: 'Standing V2 contract', network: 'Flare Coston2 testnet', value: STANDING_ADDRESS, href: `${COSTON2_EXPLORER}/address/${STANDING_ADDRESS}` },
   { label: 'FTSO USD adapter', network: 'Flare Coston2 testnet', value: FTSO_ADAPTER_ADDRESS, href: `${COSTON2_EXPLORER}/address/${FTSO_ADAPTER_ADDRESS}` },
@@ -14,8 +18,8 @@ const proofRows = [
 ]
 
 const pilotRows = [
-  { label: 'Plan 4 created', detail: 'Merchant wallet later attributed to Virtual', value: '0xdd9362d5794493e94f7ec26c1ff4b40ba4e545bbc707465a31bb8a3c60382924' },
-  { label: 'Subscriber address opens mandate 4', detail: '1 FTestXRP prepaid', value: '0x1a350e64894b74bd0569249cefae30bffbae26b6b97bbdb111eb92c86e7aa891' },
+  { label: 'Historical V1 plan 4 created', detail: 'Merchant wallet later attributed to Virtual', value: '0xdd9362d5794493e94f7ec26c1ff4b40ba4e545bbc707465a31bb8a3c60382924' },
+  { label: 'Subscriber address opens historical V1 mandate 4', detail: '1 FTestXRP prepaid', value: '0x1a350e64894b74bd0569249cefae30bffbae26b6b97bbdb111eb92c86e7aa891' },
   { label: 'Scheduled FTSO charge', detail: '0.092905 FTestXRP', value: '0x0b645b0c6bc4d8e510b84303cb879f2d945c3480358405bba3c9df8f7297aef7' },
   { label: 'Subscriber address cancels', detail: 'Later charges blocked', value: '0x09bf4c1c0291edb076b003c6a023f1f07671e627bad7a6dbd048efc5ed40732b' },
   { label: 'Unused capacity returned', detail: '0.907095 FTestXRP', value: '0x1766be15d3e344a63cb238de339a7b2ef259932c288aac4b0cbefabfc892052f' },
@@ -29,17 +33,18 @@ export function EvidencePage() {
         <div>
           <span className="eyebrow">Exact public receipts · testnets only</span>
           <h1>Inspect every proof at its source.</h1>
-          <p>The primary claim is narrow: one validated XRPL Testnet payment and one successful Coston2 transaction direct-minted FTestXRP, opened mandate 1, and paid its first cycle. Identity statements stay separate from what chain state proves.</p>
+          <p>Two validated XRPL Testnet payments produced immediately paid V2 mandates on Coston2. The durable plan 2 showcase remains paid through 25 Aug 2026; the fast plan 1 replay proves a later permissionless renewal. Identity statements stay separate from what chain state proves.</p>
         </div>
         <div className="heading-actions">
-          <Link className="button button-primary" to="/#verified-replay">Open interactive replay</Link>
+          <Link className="button button-primary" to="/demo">Open durable subscriber demo</Link>
+          <Link className="button button-secondary" to="/#verified-replay">Open fast replay</Link>
           <Link className="button button-secondary" to="/legacy-recovery">Historical V1 recovery</Link>
         </div>
       </section>
 
       <section className="receipt-boundary" aria-label="Proof and checkout boundary">
-        <div><strong>Verified XRP path</strong><span>Fresh public V2 receipts plus the latest read of mandate 1. No wallet or writes.</span></div>
-        <div><strong>Live V2 + bounded V1 recovery</strong><span>New actions use V2. Historical V1 is isolated to subscriber cancellation and canceled-balance withdrawal.</span><Link className="text-link" to="/legacy-recovery">Open recovery route</Link></div>
+        <div><strong>Verified XRP paths</strong><span>Fresh public V2 receipts; the demo reads only plan 2 and mandate 2 at one explicitly labelled Coston2 block. No wallet or writes.</span></div>
+        <div><strong>Live V2 + bounded V1 recovery</strong><span>New actions use V2. The public app exposes V1 only for subscriber cancellation and canceled-balance withdrawal.</span><Link className="text-link" to="/legacy-recovery">Open recovery route</Link></div>
       </section>
 
       <section className="proof-layout">
@@ -58,10 +63,10 @@ export function EvidencePage() {
             <li><span>1.2 XRP</span><div><strong>Payment validated</strong><small>tesSUCCESS · ledger {ATOMIC_PROOF.xrplLedger} · canonical 0xFE instruction</small></div></li>
             <li><span>FDC</span><div><strong>Payment proven on Coston2</strong><small>1.1 FTestXRP reached the Smart Account; 1 FTestXRP entered Standing</small></div></li>
             <li><span>#1</span><div><strong>The mandate opens</strong><small>Plan 1 · 1 FTestXRP deposited · subscriber remains in control</small></div></li>
-            <li><span>Paid</span><div><strong>First-cycle access activates immediately</strong><small>0.1 charged · 0.099 merchant · 0.001 fee · 0.9 remains</small></div></li>
-            <li><span>Keeper</span><div><strong>The next cycle advances permissionlessly</strong><small>Different sender · 0.1 charged · 0.8 remains · no subscriber key</small></div></li>
+            <li><span>Paid</span><div><strong>First-cycle access activated immediately</strong><small>Opening snapshot · block {ATOMIC_PROOF.openingBlock} · 0.1 charged · 0.9 remained</small></div></li>
+            <li><span>Keeper</span><div><strong>A later cycle advanced permissionlessly</strong><small>Recurrence snapshot · block {ATOMIC_PROOF.recurringBlock} · different sender · 0.8 remained</small></div></li>
           </ol>
-          <p>Controlled-builder evidence using XRPL Testnet, Flare Coston2, Smart Accounts, FAssets, FDC, and Standing. The XRPL payment and Coston2 execution are separate source-chain transactions. This is not a mainnet or customer-adoption claim.</p>
+          <p>The balances above are point-in-time receipt snapshots at the labelled blocks; the homepage reports current mandate state from the public RPC. Controlled-builder evidence using XRPL Testnet, Flare Coston2, Smart Accounts, FAssets, FDC, and Standing. The XRPL payment and Coston2 execution are separate source-chain transactions. This is not a mainnet or customer-adoption claim.</p>
         </aside>
       </section>
 

@@ -1,6 +1,6 @@
 # STANDING — 48-Hour Validation Log
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 Project: `Standing` (Flare recurring payments / prepaid mandates)
 
@@ -22,15 +22,16 @@ Project: `Standing` (Flare recurring payments / prepaid mandates)
 ## Current notes
 
 - Contract scaffold and tests are in place (`src/StandingMandates.sol`, `script/*.s.sol`, `test/Standing.t.sol`).
-- Reviewed V2 release gates are complete as of 2026-08-10:
+- Current judge-demo candidate gates were run on 2026-08-11. Exact-head review
+  remains a release gate:
   - `forge fmt` ✅
   - `forge build` ✅
   - `forge test` ✅ (38/38 passing, including 2 stateful invariants with 256 runs and 128,000 calls each)
   - `forge coverage --report lcov` ✅
-  - `cd app && npm test` ✅ (22/22 passing)
-  - `cd app && npm run test:browser` ✅ (38/38 desktop/mobile on a verified free port)
+  - `cd app && npm test` ✅ (47/47 passing, including exact-read, live-expiry, cancellation-refresh, and RPC-failure demo gates)
+  - `cd app && npm run test:browser` ✅ (52/52 desktop/mobile on a verified free port)
   - `cd tools/atomic-subscribe && npm test` ✅ (109/109 passing)
-  - `cd tools/keeper && npm test` ✅ (17/17 passing, including hard work budgets, queued 1,001-mandate coverage, post-broadcast reconciliation, and pathological-receipt tail rotation)
+  - `cd tools/keeper && npm test` ✅ (32/32 passing, including hosted mandate-2 pinning, hard work budgets, queued 1,001-mandate coverage, post-broadcast reconciliation, and pathological-receipt tail rotation)
 - Coston2 dependency checks done:
   - `getFeedByIdInWei(bytes21)` on FTSO v2 feed returns non-zero XRPL/USD price data and timestamp.
   - Coston2 FTestXRP verified at:
@@ -62,15 +63,15 @@ source publication remains a release operation.
 
 ### Current reviewed V2 deployment and immediate-value proof
 
-On 2026-08-10, exact source head `ea1cf65` passed all nine GitHub checks and a
-focused installed-Codex review of the final legacy-recovery increment. The
-deployment exposes version `2` and capability
+On 2026-08-10, the reviewed V2 contract candidate at `ea1cf65` produced the
+deployment below. The final legacy-recovery increment was reviewed at PR head
+`b9948f6` and merged as `8d6eeb7`. The deployment exposes version `2` and capability
 `0x95b0f893ac5f1434738e3ebdeada0989770f34f6b1c9bce29e2f2534a7ba1e81`.
 
 - Standing V2: `0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7`
   - deployment: `0xa0f4d5f5456a2661ad1cb239edb14a7117f7961d6ca2b6392460b27c9a6b53a5`
   - block: `33892942`
-  - FXRP: `0x0b6A3645c240605887a5532109323A3E12273dc7`
+  - FTestXRP: `0x0b6A3645c240605887a5532109323A3E12273dc7`
   - price adapter: `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8`
   - fee: `100` bps; maximum price age: `300` seconds
 - Fixed plan 1: `0.1 FTestXRP` every `600` seconds
@@ -106,6 +107,38 @@ This is the current primary proof: one XRP payment produced an immediately
 useful paid subscription state on Flare. It is controlled-builder testnet
 evidence, not mainnet usage, production revenue, or external adoption.
 
+### Durable V2 showcase through judging
+
+On 2026-08-11, a second controlled XRPL-to-Flare subscription was opened with
+a cadence sized to remain paid through the judging and award-announcement
+window. It is separate from the fast plan 1 / mandate 1 recurrence proof.
+
+- Plan 2 creation:
+  `0xc871264b7208791409a1b77aa8c9609f37aaae33351e481b60bfe40e510a51ac`
+  - block `33,906,897`
+  - merchant/operator: `0x4BFed030961344Fe9Ac1B59f31D9f29740aD437a`
+  - fixed price: `10,000` atomic / `0.01 FTestXRP`
+  - period: `1,209,600` seconds / 14 days
+- XRPL Testnet authorization:
+  `670CB8D1C19E562EF8BF73D006672E2AC56FAF0D29560F025FED68DF315B0595`
+  - validated `tesSUCCESS` in ledger `19,811,948`
+  - amount: `300,000` drops / `0.3 XRP`
+  - no destination tag; exactly one 42-byte `0xFE` memo
+- Atomic Coston2 execution:
+  `0x4bef577198ef681b4778ce2f023676ee7678a78432b2928f75271815f5ca9de5`
+  - success at block `33,907,012`
+  - plan 2, mandate 2, subscriber
+    `0x40Ec816838Cff78FC20a51bB1C33DEC57c67eAe0`
+  - deposited `100,000` atomic FTestXRP
+  - immediate gross charge `10,000`; merchant `9,900`; protocol `100`
+  - remaining capacity `90,000`
+  - last charge `2026-08-11T05:41:47Z`
+  - next charge `2026-08-25T05:41:47Z`
+  - residual allowance to Standing: `0`
+
+The subscriber, merchant/executor, and keeper are distinct addresses. This is
+controlled testnet evidence, not production revenue or external adoption.
+
 ### Historical spike deployment (historical proof path)
 
 - FTSO adapter deployed: `0x11789c23825D379b448B7B24C476bCF16941AD92`  
@@ -131,13 +164,18 @@ evidence, not mainnet usage, production revenue, or external adoption.
   - merchant and protocol claim balances = `0` after withdrawal
   - mandates 1 and 2 are canceled with deposited and remaining balances zero after refund
 
-- Current V1 live state (queried 2026-08-10):
+- V1 snapshot queried 2026-08-10, before the later pause:
   - `planCount() = 4`
   - `mandateCount() = 5`
   - `contractBalance() = 1,001,854` raw FTestXRP
   - `owner() = 0x9C7169BAAB226ABCC5C20d1CabebA8BaB9ea99dd`
   - `paused() = false`
   - mandate 5 remains active with `902,058` raw FTestXRP after its first charge
+
+- Later V1 safety snapshot at Coston2 block `33,906,630` on 2026-08-11:
+  - `paused() = true`
+  - `mandateCount() = 5`
+  - `contractBalance() = 1,001,854` raw FTestXRP
 
 ### Hardened lifecycle proof
 
@@ -155,9 +193,9 @@ evidence, not mainnet usage, production revenue, or external adoption.
 - Protocol withdrawal: `0xb017b4807e510921fb193f87701d647df95c039b25b197d73d69b042376a7259`
 - Residual token allowance cleared: `0xc232f67cb7a906f3b99c5ebdd2048cc3ad955acb5d376728e19402977a0248ee`
 
-### Live FTSO USD-plan proof
+### Historical V1 live FTSO USD-plan proof
 
-Plan 2 is priced at `1,000,000` micro-USD ($1.00) with no fixed FXRP
+Historical V1 plan 2 is priced at `1,000,000` micro-USD ($1.00) with no fixed FXRP
 price. Its live charge called the deployed FTSO adapter and resolved the plan
 to `868,677` raw FTestXRP at execution time.
 
@@ -182,9 +220,9 @@ completed one controlled lifecycle with their own wallets:
 
 - Merchant: Virtual, `0xE9bcb0f59dC73Aa39F5486131c3F6614d36515e9`
 - Subscriber: `0x154C9560B619fea7acb81F65c7e87E156FE2c975`
-- Plan 4 created: `0xdd9362d5794493e94f7ec26c1ff4b40ba4e545bbc707465a31bb8a3c60382924`
+- Historical V1 plan 4 created: `0xdd9362d5794493e94f7ec26c1ff4b40ba4e545bbc707465a31bb8a3c60382924`
 - `1 FTestXRP` approved: `0x91879f489e2a7b9d281ce7f088e7a82b93f63bd4ef5b4171394605c3fc3de032`
-- Mandate 4 opened: `0x1a350e64894b74bd0569249cefae30bffbae26b6b97bbdb111eb92c86e7aa891`
+- Historical V1 mandate 4 opened: `0x1a350e64894b74bd0569249cefae30bffbae26b6b97bbdb111eb92c86e7aa891`
 - Scheduled FTSO-priced charge: `0x0b645b0c6bc4d8e510b84303cb879f2d945c3480358405bba3c9df8f7297aef7`
   - total charge: `92,905` atomic / `0.092905 FTestXRP`
   - merchant credit: `91,976` atomic / `0.091976 FTestXRP`

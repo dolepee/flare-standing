@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { HARD_MAX_MANDATES_PER_RUN, runKeeper } from '../src/keeper.mjs'
+import {
+  HARD_MAX_MANDATES_PER_RUN,
+  parseHostedKeeperMandateIds,
+  parseKeeperMandateIds,
+  runKeeper,
+} from '../src/keeper.mjs'
 
 const standing = '0x0000000000000000000000000000000000000001'
 const account = { address: '0x0000000000000000000000000000000000000002' }
@@ -47,11 +52,24 @@ function harness({ paused = false, due = true, active = true, concurrentAdvance 
     },
   }
   const parseLogs = (receiptLogs) => receiptLogs
-  return { publicClient, walletClient, writes, logs, parseLogs, log: (event, details) => logs.push({ event, ...details }) }
+  return {
+    publicClient,
+    walletClient,
+    writes,
+    logs,
+    mandateIds: [1n],
+    parseLogs,
+    log: (event, details) => logs.push({ event, ...details }),
+  }
+}
+
+function mandateRange(count) {
+  return Array.from({ length: Number(count) }, (_, index) => BigInt(index + 1))
 }
 
 function pagingHarness({ count, timestamp }) {
   const context = harness({ timestamp })
+  context.mandateIds = mandateRange(count)
   const mandateIds = []
   context.publicClient.readContract = async ({ functionName, args }) => {
     if (functionName === 'standingIdentity') {
@@ -76,6 +94,7 @@ function activePagingHarness({
   hangReconciliation = false,
 }) {
   const context = harness({ timestamp })
+  context.mandateIds = mandateRange(count)
   const mandateIds = []
   const writes = []
   const readCounts = new Map()
@@ -126,6 +145,50 @@ test('submits exactly one due active mandate', async () => {
   assert.equal(result.submitted, 1)
   assert.equal(context.writes.length, 1)
   assert.equal(context.logs.some((entry) => entry.event === 'charge_executed'), true)
+})
+
+test('parses an exact nonempty keeper mandate allowlist', () => {
+  assert.deepEqual(parseKeeperMandateIds('2,17,400'), [2n, 17n, 400n])
+})
+
+test('pins the hosted keeper to only the durable judge mandate', () => {
+  assert.deepEqual(parseHostedKeeperMandateIds('2'), [2n])
+  for (const unsafe of ['1', '1,2', '2,3']) {
+    assert.throws(() => parseHostedKeeperMandateIds(unsafe), /pinned to mandate 2/)
+  }
+})
+
+for (const malformed of [undefined, '', ' ', '0', '01', '1,', ',1', '1, 2', '1,1', 'one']) {
+  test(`rejects malformed keeper mandate allowlist ${JSON.stringify(malformed)}`, () => {
+    assert.throws(() => parseKeeperMandateIds(malformed), /KEEPER_MANDATE_IDS/)
+  })
+}
+
+test('excludes mandate 1 when the exact keeper allowlist contains only mandate 2', async () => {
+  const page = activePagingHarness({ count: 2n })
+  const result = await runKeeper({ ...page.context, standing, mandateIds: [2n] })
+
+  assert.equal(result.scanned, 1)
+  assert.deepEqual(page.mandateIds, [2n])
+  assert.deepEqual(page.writes, [2n])
+})
+
+test('fails closed before scanning when the keeper mandate allowlist is empty', async () => {
+  const context = harness()
+  await assert.rejects(
+    () => runKeeper({ ...context, standing, mandateIds: [] }),
+    /KEEPER_MANDATE_IDS must contain at least one mandate ID/,
+  )
+  assert.equal(context.writes.length, 0)
+})
+
+test('fails closed before scanning when the allowlist references a nonexistent mandate', async () => {
+  const context = harness()
+  await assert.rejects(
+    () => runKeeper({ ...context, standing, mandateIds: [2n] }),
+    /nonexistent mandate 2/,
+  )
+  assert.equal(context.writes.length, 0)
 })
 
 test('does not submit before the due timestamp', async () => {
@@ -308,6 +371,7 @@ test('stops the page if both a submitted receipt and its state reconciliation ti
 
 test('isolates one mandate failure until the scan completes', async () => {
   const context = harness()
+  context.mandateIds = [1n, 2n]
   context.publicClient.readContract = async ({ functionName, args }) => {
     if (functionName === 'standingIdentity') {
       return [2n, '0x95b0f893ac5f1434738e3ebdeada0989770f34f6b1c9bce29e2f2534a7ba1e81']

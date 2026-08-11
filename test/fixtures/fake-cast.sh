@@ -29,7 +29,7 @@ case "${1:-}" in
   call)
     signature="${3:-}"
     case "$signature" in
-      'mandateCount()(uint256)') printf '1\n' ;;
+      'mandateCount()(uint256)') printf '2\n' ;;
       'paused()(bool)') printf 'false\n' ;;
       'mandate(uint256)(uint256,address,uint256,uint256,uint256,uint256,bool)')
         jq -cn --arg remaining "${FAKE_REMAINING:?}" \

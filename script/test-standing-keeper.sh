@@ -21,12 +21,13 @@ run_case() {
     RUN_LIVE="$run_live" \
     KEEPER_PRIVATE_KEY="0xkeeper-test-key" \
     KEEPER_LOG_PATH="$log_path" \
+    KEEPER_MANDATE_IDS=2 \
     FAKE_REMAINING="$remaining" \
     FAKE_RECEIPT_EVENT="$receipt_event" \
     "$root_dir/script/standing-keeper.sh" --once >/dev/null
 
   jq -e --arg event "$expected_event" \
-    'select(.event == $event and .mandateId == 1)' "$log_path" >/dev/null
+    'select(.event == $event and .mandateId == 2)' "$log_path" >/dev/null
 }
 
 run_case dry-block 0 500000 blocked charge_would_block
@@ -39,6 +40,7 @@ printf '2147483647\n' >"${stale_log}.lock"
 PATH="$temp_dir:$PATH" \
   STANDING_ADDRESS="$standing_address" \
   KEEPER_LOG_PATH="$stale_log" \
+  KEEPER_MANDATE_IDS=2 \
   FAKE_REMAINING=2000000 \
   FAKE_RECEIPT_EVENT=executed \
   "$root_dir/script/standing-keeper.sh" --once >/dev/null
@@ -49,6 +51,7 @@ crash_marker="$temp_dir/crash-child-started"
 PATH="$temp_dir:$PATH" \
   STANDING_ADDRESS="$standing_address" \
   KEEPER_LOG_PATH="$crash_log" \
+  KEEPER_MANDATE_IDS=2 \
   FAKE_REMAINING=2000000 \
   FAKE_RECEIPT_EVENT=executed \
   FAKE_BLOCK_DELAY=2 \
@@ -69,6 +72,7 @@ wait "$keeper_pid" 2>/dev/null || true
 PATH="$temp_dir:$PATH" \
   STANDING_ADDRESS="$standing_address" \
   KEEPER_LOG_PATH="$crash_log" \
+  KEEPER_MANDATE_IDS=2 \
   FAKE_REMAINING=2000000 \
   FAKE_RECEIPT_EVENT=executed \
   "$root_dir/script/standing-keeper.sh" --once >/dev/null

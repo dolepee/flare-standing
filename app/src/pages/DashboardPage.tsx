@@ -6,8 +6,8 @@ import { Status } from '../components/Status'
 import { STANDING_ADDRESS } from '../config'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
-import { ATOMIC_PROOF } from '../lib/atomicProof'
 import { formatFxrp, runUiAction, shortAddress } from '../lib/format'
+import { JUDGE_DEMO } from '../lib/judgeDemo'
 import { getPlanProfile } from '../lib/planCatalog'
 
 export function DashboardPage() {
@@ -15,35 +15,35 @@ export function DashboardPage() {
   const { state, loading, initialized, error, refresh } = useProtocol()
   const ownedMandates = state.mandates.filter((mandate) => mandate.subscriber.toLowerCase() === account?.toLowerCase())
   const dueCount = state.mandates.filter((mandate) => !mandate.canceled && mandate.nextChargeAt <= state.chainTimestamp).length
-  const replayMandate = state.mandates.find((mandate) => mandate.id === ATOMIC_PROOF.mandateId)
-  const replayPlan = state.plans.find((plan) => plan.id === ATOMIC_PROOF.planId)
+  const showcaseMandate = state.mandates.find((mandate) => mandate.id === JUDGE_DEMO.mandateId)
+  const showcasePlan = state.plans.find((plan) => plan.id === JUDGE_DEMO.planId)
 
   return (
     <div className="page dashboard-page">
       <section className="atomic-hero" aria-labelledby="atomic-hero-title">
         <div className="atomic-hero-copy">
-          <span className="eyebrow">Verified XRPL → Flare subscription · testnets</span>
+          <span className="eyebrow">XRP-funded recurring access · Flare Coston2 testnet</span>
           <h1 id="atomic-hero-title">Pay in XRP. Land subscribed on Flare.</h1>
           <p>
-            A controlled 1.2 XRP payment was proven through FDC, direct-minted into FTestXRP, then opened and charged a Standing mandate in one Coston2 transaction. The result was immediate paid access with 0.9 FTestXRP left under subscriber control.
+            Standing turns an XRP payment into bounded recurring access on Flare. Open the live subscriber brief without a wallet, then inspect the verified cross-chain path and cancelable mandate behind it.
           </p>
 
-          <dl className="atomic-facts" aria-label="Verified atomic subscription facts">
-            <div><dt>User authorized</dt><dd>1.2 XRP</dd></div>
-            <div><dt>Standing deposit</dt><dd>1 FTestXRP</dd></div>
-            <div><dt>Immediate result</dt><dd>Mandate #1 paid</dd></div>
-            <div><dt>First cycle</dt><dd>0.1 FTestXRP</dd></div>
-          </dl>
-
           <div className="hero-actions">
-            <a className="button button-primary" href="#verified-replay">Verify the exact receipts <ArrowRight size={15} aria-hidden="true" /></a>
-            <Link className="button button-secondary" to="/checkout/1">Try Coston2 checkout</Link>
+            <Link className="button button-primary" to="/demo">Open live subscriber demo <ArrowRight size={15} aria-hidden="true" /></Link>
+            <a className="button button-secondary" href="#verified-replay">Verify the exact receipts</a>
           </div>
+
+          <dl className="atomic-facts" aria-label="Verified atomic subscription facts">
+            <div><dt>User authorized</dt><dd>0.3 XRP</dd></div>
+            <div><dt>Standing capacity</dt><dd>0.1 FTestXRP</dd></div>
+            <div><dt>Immediate result</dt><dd>Mandate #2 paid</dd></div>
+            <div><dt>First cycle</dt><dd>0.01 FTestXRP</dd></div>
+          </dl>
 
           <div className="experience-boundary" aria-label="Verified XRP path and browser checkout boundary">
             <div>
               <CheckCircle2 size={18} aria-hidden="true" />
-              <span><strong>Immediate proof</strong>The open and first charge share one successful Coston2 receipt.</span>
+              <span><strong>Immediate proof</strong>The open and first charge share one successful Coston2 receipt at block {JUDGE_DEMO.openingBlock.toLocaleString('en-US')}; that paid state unlocks the useful result.</span>
             </div>
             <div>
               <WalletCards size={18} aria-hidden="true" />
@@ -54,8 +54,9 @@ export function DashboardPage() {
         </div>
 
         <AtomicProofReplay
-          mandate={replayMandate}
-          plan={replayPlan}
+          mandate={showcaseMandate}
+          plan={showcasePlan}
+          snapshotBlockNumber={state.snapshotBlockNumber}
           chainTimestamp={state.chainTimestamp}
           initialized={initialized}
           loading={loading}

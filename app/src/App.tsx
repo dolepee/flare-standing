@@ -3,6 +3,7 @@ import { Layout } from './components/Layout'
 import { ProtocolProvider } from './context/ProtocolContext'
 import { WalletProvider } from './context/WalletContext'
 import { DashboardPage } from './pages/DashboardPage'
+import { DemoPage } from './pages/DemoPage'
 import { AccessPage } from './pages/AccessPage'
 import { CheckoutPage } from './pages/CheckoutPage'
 import { EvidencePage } from './pages/EvidencePage'
@@ -16,9 +17,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <WalletProvider>
-        <ProtocolProvider>
-          <Routes>
-            <Route element={<Layout />}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="demo" element={<DemoPage />} />
+          </Route>
+          <Route element={<ProtocolProvider><Layout /></ProtocolProvider>}>
               <Route index element={<DashboardPage />} />
               <Route path="plans" element={<PlansPage />} />
               <Route path="checkout/:planId" element={<CheckoutPage />} />
@@ -28,9 +31,8 @@ export default function App() {
               <Route path="evidence" element={<EvidencePage />} />
               <Route path="legacy-recovery" element={<LegacyRecoveryPage />} />
               <Route path="*" element={<NotFoundPage />} />
-            </Route>
-          </Routes>
-        </ProtocolProvider>
+          </Route>
+        </Routes>
       </WalletProvider>
     </BrowserRouter>
   )

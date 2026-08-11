@@ -1,29 +1,40 @@
 import {
   BadgeDollarSign,
   Blocks,
-  LayoutDashboard,
   Menu,
+  PlayCircle,
   ReceiptText,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useProtocol } from '../context/ProtocolContext'
 import { Brand } from './Brand'
 import { TransactionDrawer } from './TransactionDrawer'
 import { WalletButton } from './WalletButton'
 
 const navItems = [
-  { to: '/', label: 'Proof replay', icon: LayoutDashboard },
+  { to: '/demo', label: 'Live demo', icon: PlayCircle },
   { to: '/plans', label: 'Testnet checkout', icon: BadgeDollarSign },
   { to: '/mandates', label: 'My mandates', icon: ReceiptText },
   { to: '/evidence', label: 'Receipts', icon: Blocks },
 ]
 
+function ProtocolNetworkState() {
+  const { state, initialized } = useProtocol()
+  return (
+    <span className={state.paused ? 'network-state network-paused' : 'network-state'}>
+      <span aria-hidden="true" />
+      {!initialized ? 'Checking Coston2' : state.paused ? 'Testnet paused' : 'Coston2 testnet'}
+    </span>
+  )
+}
+
 export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
-  const { state, initialized } = useProtocol()
+  const { pathname } = useLocation()
+  const demoRoute = pathname.replace(/\/+$/, '') === '/demo'
 
   useEffect(() => {
     if (!menuOpen) return
@@ -51,11 +62,8 @@ export function Layout() {
           ))}
         </nav>
         <div className="topbar-actions">
-          <span className={state.paused ? 'network-state network-paused' : 'network-state'}>
-            <span aria-hidden="true" />
-            {!initialized ? 'Checking Coston2' : state.paused ? 'Testnet paused' : 'Coston2 testnet'}
-          </span>
-          <WalletButton />
+          {demoRoute ? <span className="network-state"><span aria-hidden="true" />Coston2 testnet</span> : <ProtocolNetworkState />}
+          {demoRoute ? <span className="demo-wallet-free">No wallet needed</span> : <WalletButton />}
           <button
             ref={menuButtonRef}
             className="menu-button"

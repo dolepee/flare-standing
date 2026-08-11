@@ -19,4 +19,18 @@ describe('getPlanProfile', () => {
     expect(getPlanProfile({ ...catalogedPlan, merchant: '0x1111111111111111111111111111111111111111' }).merchantName)
       .toBe('Unattributed onchain merchant')
   })
+
+  it('binds the durable access pass only to its exact onchain merchant', () => {
+    const durablePlan: StandingPlan = {
+      id: 2n,
+      merchant: '0x4BFed030961344Fe9Ac1B59f31D9f29740aD437a',
+      priceUsdMicro: 0n,
+      priceFxrp: 10_000n,
+      periodSeconds: 1_209_600,
+      active: true,
+    }
+    expect(getPlanProfile(durablePlan).name).toBe('XRP Subscription Launch Brief')
+    expect(getPlanProfile({ ...durablePlan, merchant: catalogedPlan.merchant }).name)
+      .toBe('Onchain recurring plan')
+  })
 })
