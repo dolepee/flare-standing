@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useProtocol } from '../context/ProtocolContext'
 import { Brand } from './Brand'
+import { RouteMetadata } from './RouteMetadata'
 import { TransactionDrawer } from './TransactionDrawer'
 import { WalletButton } from './WalletButton'
 
@@ -34,7 +35,7 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const { pathname } = useLocation()
-  const demoRoute = pathname.replace(/\/+$/, '') === '/demo'
+  const demoRoute = pathname.replace(/\/+$/, '').toLowerCase() === '/demo'
 
   useEffect(() => {
     if (!menuOpen) return
@@ -49,6 +50,7 @@ export function Layout() {
 
   return (
     <div className="app-shell">
+      <RouteMetadata />
       <header className="topbar">
         <NavLink to="/" className="brand-link" onClick={() => setMenuOpen(false)}>
           <Brand />

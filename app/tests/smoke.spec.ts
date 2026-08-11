@@ -1,5 +1,29 @@
 import { expect, test } from '@playwright/test'
 
+test('stable routes publish one matching canonical and Open Graph URL', async ({ page }) => {
+  const expected = [
+    ['/', 'Standing | Pay in XRP, land subscribed on Flare', 'https://standing.dolepee.com/'],
+    ['/demo', 'Wallet-Free XRP Subscription Demo | Standing', 'https://standing.dolepee.com/demo'],
+    ['/evidence', 'Verified XRP-to-Flare Receipts | Standing', 'https://standing.dolepee.com/evidence'],
+    ['/Demo', 'Wallet-Free XRP Subscription Demo | Standing', 'https://standing.dolepee.com/demo'],
+    ['/EVIDENCE', 'Verified XRP-to-Flare Receipts | Standing', 'https://standing.dolepee.com/evidence'],
+  ] as const
+
+  for (const [path, title, canonicalUrl] of expected) {
+    await page.goto(path)
+    await expect(page).toHaveTitle(title)
+    await expect(page.locator('meta[name="description"]')).toHaveCount(1)
+    await expect(page.locator('link[rel="canonical"]')).toHaveCount(1)
+    await expect(page.locator('meta[property="og:url"]')).toHaveCount(1)
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', canonicalUrl)
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonicalUrl)
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', title)
+    expect(await page.locator('meta[property="og:description"]').getAttribute('content')).toBe(
+      await page.locator('meta[name="description"]').getAttribute('content'),
+    )
+  }
+})
+
 for (const path of ['/', '/demo', '/plans', '/checkout/1', '/mandates', '/access/1', '/merchant', '/evidence', '/legacy-recovery']) {
   test(`${path} renders without horizontal overflow`, async ({ page }) => {
     const errors: string[] = []
