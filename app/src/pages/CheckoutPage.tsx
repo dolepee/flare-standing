@@ -50,7 +50,7 @@ export function CheckoutPage() {
   }, [amount, plan, reviewedCeiling])
 
   async function subscribe() {
-    if (!plan || amount <= 0n || initialChargeSelection.error || initialChargeSelection.ceiling <= 0n) return
+    if (!plan?.active || amount <= 0n || initialChargeSelection.error || initialChargeSelection.ceiling <= 0n) return
     if (state.walletAllowance < amount) {
       await execute({
         label: `Approve ${deposit} FTestXRP`,

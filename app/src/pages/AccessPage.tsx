@@ -109,7 +109,7 @@ export function AccessPage() {
 
   const chainNow = nowSeconds > state.chainTimestamp ? nowSeconds : state.chainTimestamp
   const entitlement = entitlementState(mandate, plan.periodSeconds, chainNow)
-  const historicalPlanPaused = entitlement === 'payment_due' && !plan.active
+  const historicalPlanPaused = !plan.active && entitlement !== 'active' && entitlement !== 'canceled'
   const copy = historicalPlanPaused ? pausedHistoricalCopy : stateCopy[entitlement]
   const Icon = copy.icon
   const ownsMandate = isSameAddress(account, mandate.subscriber)
