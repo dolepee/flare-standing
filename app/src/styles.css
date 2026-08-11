@@ -69,6 +69,8 @@ main { flex: 1; }
 .route-failure > svg { color: var(--amber); }
 .route-failure h1 { margin: 4px 0 0; font-size: 27px; }
 .route-failure p { max-width: 520px; margin: 0 0 8px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.inactive-plan-notice small { max-width: 520px; color: var(--muted); }
+.inactive-plan-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
 .back-link { width: max-content; margin-bottom: 24px; display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .back-link:hover { color: var(--ink); }
 .dashboard-heading { align-items: flex-start; }

@@ -1,4 +1,4 @@
-import { Ban, CircleDollarSign, KeyRound, RotateCcw, Zap } from 'lucide-react'
+import { Ban, CircleDollarSign, KeyRound, PauseCircle, RotateCcw, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
@@ -14,6 +14,7 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
   const { state, refresh } = useProtocol()
   const isOwner = isSameAddress(account, mandate.subscriber)
   const due = Number(mandate.nextChargeAt) * 1_000 <= Date.now()
+  const planPaused = plan?.active === false
 
   async function action(functionName: 'cancel' | 'withdrawMandate' | 'charge', label: string) {
     await execute({
@@ -54,8 +55,8 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
           <span>Mandate #{mandate.id.toString()}</span>
           <strong>{formatFxrp(mandate.remaining)} FTestXRP</strong>
         </div>
-        <Status tone={mandate.canceled ? 'warning' : due ? 'muted' : 'good'}>
-          {mandate.canceled ? 'Canceled' : due ? 'Charge due' : 'Funded'}
+        <Status tone={mandate.canceled || planPaused ? 'warning' : due ? 'muted' : 'good'}>
+          {mandate.canceled ? 'Canceled' : planPaused ? 'Plan paused' : due ? 'Charge due' : 'Funded'}
         </Status>
       </div>
       <dl className="mandate-details">
@@ -68,7 +69,11 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
         <Link className="button button-primary" to={`/access/${mandate.id.toString()}`}>
           <KeyRound size={15} aria-hidden="true" /> View access
         </Link>
-        {!mandate.canceled ? (
+        {!mandate.canceled && planPaused ? (
+          <button className="button button-secondary" type="button" disabled>
+            <PauseCircle size={15} aria-hidden="true" /> Plan paused
+          </button>
+        ) : !mandate.canceled ? (
           <button className="button button-secondary" type="button" disabled={!due || !account} onClick={() => runUiAction(action('charge', `Charge mandate #${mandate.id}`))}>
             <Zap size={15} aria-hidden="true" /> Run charge
           </button>
@@ -84,7 +89,7 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
           </button>
         ) : null}
       </div>
-      {isOwner && !mandate.canceled ? (
+      {isOwner && !mandate.canceled && !planPaused ? (
         <div className="compact-topup">
           <label htmlFor={`topup-${mandate.id}`}>Add capacity</label>
           <div className="input-with-unit"><input id={`topup-${mandate.id}`} value={topUp} onChange={(event) => setTopUp(event.target.value)} /><span>FTestXRP</span></div>

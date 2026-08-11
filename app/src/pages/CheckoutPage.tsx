@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { decodeEventLog } from 'viem'
 import { Coston2Setup } from '../components/Coston2Setup'
+import { InactivePlanNotice } from '../components/InactivePlanNotice'
 import { Status } from '../components/Status'
 import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import { erc20Abi, standingAbi } from '../contracts'
@@ -11,7 +12,7 @@ import { useWallet } from '../context/WalletContext'
 import { publicClient } from '../lib/chain'
 import { selectInitialChargeCeiling } from '../lib/checkout'
 import { errorMessage, formatFxrp, formatPeriod, formatUsdMicro, parseFxrp, runUiAction, shortAddress } from '../lib/format'
-import { getPlanProfile } from '../lib/planCatalog'
+import { getPlanProfile, isHistoricalReplayPlan } from '../lib/planCatalog'
 
 export function CheckoutPage() {
   const { planId } = useParams()
@@ -49,7 +50,7 @@ export function CheckoutPage() {
   }, [amount, plan, reviewedCeiling])
 
   async function subscribe() {
-    if (!plan || amount <= 0n || initialChargeSelection.error || initialChargeSelection.ceiling <= 0n) return
+    if (!plan?.active || amount <= 0n || initialChargeSelection.error || initialChargeSelection.ceiling <= 0n) return
     if (state.walletAllowance < amount) {
       await execute({
         label: `Approve ${deposit} FTestXRP`,
@@ -109,6 +110,15 @@ export function CheckoutPage() {
         <span>PLAN NOT FOUND</span>
         <h1>This checkout does not match an onchain plan.</h1>
         <Link className="button button-secondary" to="/plans">Back to plans</Link>
+      </div>
+    )
+  }
+
+  if (!plan.active) {
+    return (
+      <div className="page checkout-page">
+        <Link className="back-link" to="/plans"><ArrowLeft size={15} aria-hidden="true" /> Testnet checkouts</Link>
+        <InactivePlanNotice planId={plan.id} planName={profile.name} historicalProof={isHistoricalReplayPlan(plan)} />
       </div>
     )
   }

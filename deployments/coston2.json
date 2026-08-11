@@ -9,7 +9,7 @@
   "priceAdapterAddress": "0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8",
   "v2CheckoutDeployed": true,
   "catalogPlanIds": [1, 2],
-  "primaryCheckoutPlanId": 1,
+  "primaryCheckoutPlanId": 2,
   "judgeDemoPlanId": 2,
   "judgeDemoMandateId": 2,
   "historicalV1Address": "0x8a29c741280554028d76666dc75558d98caab855"

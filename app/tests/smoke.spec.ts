@@ -48,14 +48,14 @@ for (const path of ['/', '/demo', '/plans', '/checkout/1', '/mandates', '/access
 }
 
 test('named checkout resolves against the live onchain plan', async ({ page }) => {
-  await page.goto('/checkout/1')
-  await expect(page.getByRole('heading', { name: 'Atomic XRP Access Pass' })).toBeVisible()
+  await page.goto('/checkout/2')
+  await expect(page.getByRole('heading', { name: 'XRP Subscription Launch Brief' })).toBeVisible()
   await expect(page.getByText('Controlled fixture')).toBeVisible()
   await expect(page.getByText('V2 live')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Prepare Coston2 before checkout' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Open official faucet/ })).toHaveAttribute('href', 'https://faucet.flare.network/')
   await expect(page.getByText('Exact initial-charge ceiling')).toBeVisible()
-  await expect(page.getByRole('complementary').getByText('0.1 FTestXRP').first()).toBeVisible()
+  await expect(page.getByRole('complementary').getByText('0.01 FTestXRP').first()).toBeVisible()
   await expect(page.getByRole('complementary').getByRole('button', { name: 'Connect wallet' })).toBeVisible()
 })
 
@@ -147,14 +147,14 @@ test('blocked clipboard access exposes an accessible selected manual-copy fallba
 })
 
 test('fixed-price checkout displays the exact initial charge ceiling', async ({ page }) => {
-  await page.goto('/checkout/1')
+  await page.goto('/checkout/2')
   await expect(page.getByLabel('Maximum initial charge')).toHaveCount(0)
   await expect(page.getByText('Exact initial-charge ceiling')).toBeVisible()
   await expect(page.getByText('Fixed-price plans use the exact plan price, never the whole deposit.')).toBeVisible()
 })
 
 test('V2 checkout presents the live open-and-first-charge action', async ({ page }) => {
-  await page.goto('/checkout/1')
+  await page.goto('/checkout/2')
   await expect(page.getByText('V2 live')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Open with access paid' })).toBeVisible()
   await expect(page.getByText(/transaction must both open the test mandate and emit its first ChargeExecuted event/)).toBeVisible()
@@ -209,7 +209,7 @@ test('historical recovery does not misrepresent the funded Personal Account as b
 
 test('the verified mandate has a direct subscriber-access surface', async ({ page }) => {
   await page.goto('/access/1')
-  await expect(page.getByRole('heading', { name: 'Atomic XRP subscriber brief' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Fast-cadence XRP receipt' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Mandate #1' })).toBeVisible()
 })
 
