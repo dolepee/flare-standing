@@ -1,4 +1,4 @@
-name: Deploy static Pages fallback
+name: Deploy static judge mirror
 
 on:
   # Deliberately manual: merging this fallback must not change hosting or DNS.
@@ -27,7 +27,7 @@ jobs:
       - name: Build and verify static artifact
         working-directory: app
         env:
-          STANDING_PAGES_DOMAIN: standing.dolepee.com
+          STANDING_PAGES_DOMAIN: standing-live.dolepee.com
         run: |
           npm ci
           npm run build

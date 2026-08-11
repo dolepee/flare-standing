@@ -14,7 +14,7 @@ export const STATIC_ROUTES = [
   'legacy-recovery',
 ]
 
-const DEFAULT_DOMAIN = 'standing.dolepee.com'
+const DEFAULT_DOMAIN = 'standing-live.dolepee.com'
 
 function assertDomain(domain) {
   if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) {

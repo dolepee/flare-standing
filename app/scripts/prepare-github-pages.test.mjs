@@ -17,10 +17,10 @@ async function fixture() {
 test('creates concrete judge routes, SPA recovery, and custom-domain controls', async () => {
   const distDir = await fixture()
   try {
-    const result = await prepareGitHubPages({ distDir, domain: 'standing.dolepee.com' })
+    const result = await prepareGitHubPages({ distDir, domain: 'standing-live.dolepee.com' })
 
     assert.deepEqual(result.routes, STATIC_ROUTES)
-    assert.equal(await readFile(join(distDir, 'CNAME'), 'utf8'), 'standing.dolepee.com\n')
+    assert.equal(await readFile(join(distDir, 'CNAME'), 'utf8'), 'standing-live.dolepee.com\n')
     assert.equal(await readFile(join(distDir, '.nojekyll'), 'utf8'), '')
     assert.equal(await readFile(join(distDir, '404.html'), 'utf8'), INDEX)
 
@@ -29,7 +29,7 @@ test('creates concrete judge routes, SPA recovery, and custom-domain controls', 
     }
 
     // Re-running preparation must be safe for retried CI jobs.
-    await prepareGitHubPages({ distDir, domain: 'standing.dolepee.com' })
+    await prepareGitHubPages({ distDir, domain: 'standing-live.dolepee.com' })
   } finally {
     await rm(distDir, { recursive: true, force: true })
   }
