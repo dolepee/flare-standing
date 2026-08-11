@@ -160,6 +160,26 @@ test('V2 checkout presents the live open-and-first-charge action', async ({ page
   await expect(page.getByText(/transaction must both open the test mandate and emit its first ChargeExecuted event/)).toBeVisible()
 })
 
+test('retired fast plan remains verifiable without exposing a wallet or charge path', async ({ page }) => {
+  await page.goto('/checkout/1')
+  await expect(page.getByText('Historical checkout retired', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Fast-Cadence XRP Proof is paused.' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Open the durable live demo/ })).toHaveAttribute('href', '/demo')
+  await expect(page.getByRole('link', { name: 'Verify historical receipts' })).toHaveAttribute('href', '/evidence')
+  await expect(page.locator('main').getByRole('button', { name: /Connect wallet|Approve, open and charge|Switch to Coston2/i })).toHaveCount(0)
+
+  await page.goto('/mandates')
+  await page.getByRole('button', { name: 'All activity' }).click()
+  const historicalMandate = page.locator('article.mandate-row').first()
+  await expect(historicalMandate.getByText('Plan paused', { exact: true }).first()).toBeVisible()
+  await expect(historicalMandate.getByRole('button', { name: /Run charge|Top up/i })).toHaveCount(0)
+
+  await page.goto('/access/1')
+  await expect(page.getByText('Historical plan paused', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'This historical access pass is retired.' })).toBeVisible()
+  await expect(page.locator('main').getByRole('button', { name: 'Connect subscriber wallet' })).toHaveCount(0)
+})
+
 test('merchant capability stays discoverable without occupying primary navigation', async ({ page }) => {
   await page.goto('/plans')
   await expect(page.getByRole('link', { name: 'Merchant testnet tools' })).toHaveAttribute('href', '/merchant')

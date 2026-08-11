@@ -33,7 +33,7 @@ export function EvidencePage() {
         <div>
           <span className="eyebrow">Exact public receipts · testnets only</span>
           <h1>Inspect every proof at its source.</h1>
-          <p>Two validated XRPL Testnet payments produced immediately paid V2 mandates on Coston2. The durable plan 2 showcase remains paid through 25 Aug 2026; the fast plan 1 replay proves a later permissionless renewal. Identity statements stay separate from what chain state proves.</p>
+          <p>Two validated XRPL Testnet payments produced immediately paid V2 mandates on Coston2. The durable plan 2 showcase remains paid through 25 Aug 2026; the retired fast plan 1 replay proves a later permissionless renewal. Identity statements stay separate from what chain state proves.</p>
         </div>
         <div className="heading-actions">
           <Link className="button button-primary" to="/demo">Open durable subscriber demo</Link>
