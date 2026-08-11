@@ -22,14 +22,14 @@ const DURABLE_DEMO_MERCHANT = '0x4BFed030961344Fe9Ac1B59f31D9f29740aD437a' as co
 const planCatalog: Record<string, CatalogEntry> = {
   '1': {
     merchant: REFERENCE_MERCHANT,
-    name: 'Atomic XRP Access Pass',
+    name: 'Fast-Cadence XRP Proof',
     merchantName: 'Standing Coston2 Pilot',
-    summary: 'A fast testnet pass proving immediate access from an XRP-funded mandate.',
+    summary: 'A controlled fast-cadence fixture that proved immediate access and permissionless renewal.',
     description:
-      'Open a bounded FTestXRP mandate and pay the first cycle atomically, then retain unilateral cancellation and refund rights.',
-    accessTitle: 'Atomic XRP subscriber brief',
-    accessSummary: 'A test edition unlocked by the first successful charge in the mandate-open transaction.',
-    benefits: ['Immediate first-cycle access', 'Bounded recurring capacity', 'Onchain cancellation and refund'],
+      'This controlled testnet fixture recorded an atomic first charge and a later keeper renewal. Its receipts remain public and independently verifiable.',
+    accessTitle: 'Fast-cadence XRP receipt',
+    accessSummary: 'A block-pinned test edition retained to verify the completed open, first charge, and permissionless renewal.',
+    benefits: ['Atomic first-cycle receipt', 'Independent keeper renewal', 'Subscriber exit remains available'],
     operatorControlled: true,
   },
   '2': {

@@ -15,6 +15,14 @@ const stateCopy = {
   canceled: { label: 'Canceled', tone: 'warning' as const, title: 'Access ended', detail: 'The subscriber canceled this mandate onchain. No later charge can restore access.', icon: ShieldX },
 }
 
+const pausedHistoricalCopy = {
+  label: 'Historical plan paused',
+  tone: 'warning' as const,
+  title: 'This historical access pass is retired.',
+  detail: 'Its completed open and renewal receipts remain verifiable, but the plan no longer accepts charges. Use the durable live demo for the current paid result.',
+  icon: ReceiptText,
+}
+
 export function AccessPage() {
   const { mandateId } = useParams()
   const { account, connected, connect } = useWallet()
@@ -101,7 +109,8 @@ export function AccessPage() {
 
   const chainNow = nowSeconds > state.chainTimestamp ? nowSeconds : state.chainTimestamp
   const entitlement = entitlementState(mandate, plan.periodSeconds, chainNow)
-  const copy = stateCopy[entitlement]
+  const historicalPlanPaused = entitlement === 'payment_due' && !plan.active
+  const copy = historicalPlanPaused ? pausedHistoricalCopy : stateCopy[entitlement]
   const Icon = copy.icon
   const ownsMandate = isSameAddress(account, mandate.subscriber)
   const unlocked = entitlement === 'active' && ownsMandate
@@ -131,13 +140,15 @@ export function AccessPage() {
           ) : (
             <p>{ownsMandate || !connected ? copy.detail : 'Connect the subscriber wallet to open this paid edition.'}</p>
           )}
-          {!connected ? <button className="button button-primary" type="button" onClick={() => runUiAction(connect())}>Connect subscriber wallet</button> : null}
+          {historicalPlanPaused ? <Link className="button button-primary" to="/demo">Open durable live demo</Link> : null}
+          {!connected && !historicalPlanPaused ? <button className="button button-primary" type="button" onClick={() => runUiAction(connect())}>Connect subscriber wallet</button> : null}
         </div>
         <aside className="entitlement-receipt">
           <div className="section-title"><div><span className="eyebrow">Coston2 testnet receipt</span><h2>Mandate #{mandate.id.toString()}</h2></div><ReceiptText aria-hidden="true" /></div>
           <dl>
             <div><dt>Subscriber</dt><dd title={mandate.subscriber}>{shortAddress(mandate.subscriber)}</dd></div>
             <div><dt>Plan</dt><dd>#{mandate.planId.toString()} · {profile.name}</dd></div>
+            <div><dt>Plan status</dt><dd>{plan.active ? 'Active' : 'Paused for new charges'}</dd></div>
             <div><dt>Last paid</dt><dd>{mandate.lastChargeAt > 0n ? formatTime(mandate.lastChargeAt) : 'Not charged'}</dd></div>
             <div><dt>Next charge</dt><dd>{formatTime(mandate.nextChargeAt)}</dd></div>
             <div><dt>Cancellation</dt><dd>{mandate.canceled ? 'Final onchain' : 'Available to subscriber'}</dd></div>
