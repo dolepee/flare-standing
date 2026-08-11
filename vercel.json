@@ -2,7 +2,16 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "cd app && npm ci && npm run build",
   "outputDirectory": "app/dist",
-  "rewrites": [{ "source": "/:path((?!assets/).*)", "destination": "/index.html" }],
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/demo", "destination": "/demo/index.html" },
+    { "source": "/evidence", "destination": "/evidence/index.html" },
+    { "source": "/plans", "destination": "/plans/index.html" },
+    { "source": "/mandates", "destination": "/mandates/index.html" },
+    { "source": "/merchant", "destination": "/merchant/index.html" },
+    { "source": "/legacy-recovery", "destination": "/legacy-recovery/index.html" },
+    { "source": "/:path((?!assets/).*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",

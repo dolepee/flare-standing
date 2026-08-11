@@ -4,9 +4,18 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import test from 'node:test'
 
-import { prepareGitHubPages, STATIC_ROUTES } from './prepare-github-pages.mjs'
+import { prepareGitHubPages } from './prepare-github-pages.mjs'
 
-const INDEX = '<!doctype html><html><body><div id="root"></div><script src="/assets/app.js"></script></body></html>'
+const INDEX = `<!doctype html><html><head>
+  <title>Standing</title>
+  <meta name="description" content="Standing">
+  <link rel="canonical" href="https://standing.dolepee.com/">
+  <meta property="og:title" content="Standing">
+  <meta property="og:description" content="Standing">
+  <meta property="og:url" content="https://standing.dolepee.com/">
+  <meta name="twitter:title" content="Standing">
+  <meta name="twitter:description" content="Standing">
+</head><body><div id="root"></div><script src="/assets/app.js"></script></body></html>`
 
 async function fixture() {
   const distDir = await mkdtemp(join(tmpdir(), 'standing-pages-'))
@@ -19,13 +28,14 @@ test('creates concrete judge routes, SPA recovery, and custom-domain controls', 
   try {
     const result = await prepareGitHubPages({ distDir, domain: 'standing-live.dolepee.com' })
 
-    assert.deepEqual(result.routes, STATIC_ROUTES)
+    assert.deepEqual(result.routes, ['/', '/demo', '/evidence', '/plans', '/mandates', '/merchant', '/legacy-recovery'])
     assert.equal(await readFile(join(distDir, 'CNAME'), 'utf8'), 'standing-live.dolepee.com\n')
     assert.equal(await readFile(join(distDir, '.nojekyll'), 'utf8'), '')
-    assert.equal(await readFile(join(distDir, '404.html'), 'utf8'), INDEX)
+    assert.equal(await readFile(join(distDir, '404.html'), 'utf8'), await readFile(join(distDir, 'index.html'), 'utf8'))
 
-    for (const route of STATIC_ROUTES) {
-      assert.equal(await readFile(join(distDir, route, 'index.html'), 'utf8'), INDEX)
+    for (const route of result.routes.filter((route) => route !== '/')) {
+      const routeHtml = await readFile(join(distDir, route.slice(1), 'index.html'), 'utf8')
+      assert.match(routeHtml, new RegExp(`<link rel="canonical" href="https://standing\\.dolepee\\.com${route}"`))
     }
 
     // Re-running preparation must be safe for retried CI jobs.

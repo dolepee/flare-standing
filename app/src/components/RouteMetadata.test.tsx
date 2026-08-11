@@ -68,6 +68,12 @@ describe('RouteMetadata', () => {
 
   it('normalizes stable routes and uses a deterministic safe fallback', () => {
     expect(resolveRouteMetadata('/demo/')).toEqual(resolveRouteMetadata('/demo'))
+    expect(resolveRouteMetadata('/Demo')).toEqual(resolveRouteMetadata('/demo'))
+    expect(resolveRouteMetadata('/EVIDENCE')).toEqual(resolveRouteMetadata('/evidence'))
+    expect(resolveRouteMetadata('/Checkout/42').canonicalUrl).toBe('https://standing.dolepee.com/checkout/42')
+    expect(resolveRouteMetadata('/ACCESS/7').canonicalUrl).toBe('https://standing.dolepee.com/access/7')
+    expect(resolveRouteMetadata('/checkout/%2e%2e').canonicalUrl).toBe('https://standing.dolepee.com/')
+    expect(resolveRouteMetadata('/access/%2Fmerchant').canonicalUrl).toBe('https://standing.dolepee.com/')
     expect(resolveRouteMetadata('/unknown-route')).toEqual({
       title: 'Page Not Found | Standing',
       description: 'The requested Standing page was not found. Return to the verified XRP-to-Flare subscription experience.',

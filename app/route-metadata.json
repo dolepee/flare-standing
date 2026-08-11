@@ -1,0 +1,45 @@
+{
+  "siteOrigin": "https://standing.dolepee.com",
+  "fallback": {
+    "title": "Page Not Found | Standing",
+    "description": "The requested Standing page was not found. Return to the verified XRP-to-Flare subscription experience.",
+    "canonicalPath": "/"
+  },
+  "stableRoutes": [
+    {
+      "path": "/",
+      "title": "Standing | Pay in XRP, land subscribed on Flare",
+      "description": "Standing V2 on Coston2 testnet turns one verified XRP payment into an immediately paid, subscriber-controlled recurring mandate on Flare."
+    },
+    {
+      "path": "/demo",
+      "title": "Wallet-Free XRP Subscription Demo | Standing",
+      "description": "Inspect the useful subscriber brief unlocked by one verified XRP payment and its bounded recurring mandate on Flare Coston2."
+    },
+    {
+      "path": "/evidence",
+      "title": "Verified XRP-to-Flare Receipts | Standing",
+      "description": "Verify Standing’s XRPL Testnet payment and Coston2 plan, activation, recurring charge, and merchant-withdrawal receipts at their sources."
+    },
+    {
+      "path": "/plans",
+      "title": "Coston2 Testnet Checkout | Standing",
+      "description": "Explore Standing’s fixed-price Coston2 test plans and open a subscriber-controlled recurring mandate."
+    },
+    {
+      "path": "/mandates",
+      "title": "Subscriber Mandates | Standing",
+      "description": "Inspect and control Standing recurring mandates owned by the connected subscriber on Flare Coston2."
+    },
+    {
+      "path": "/merchant",
+      "title": "Merchant Testnet Tools | Standing",
+      "description": "Use Standing’s Coston2 merchant tools to create fixed-price plans and withdraw earned recurring payments."
+    },
+    {
+      "path": "/legacy-recovery",
+      "title": "Historical V1 Recovery | Standing",
+      "description": "Inspect and recover eligible historical Standing V1 mandate balances without reopening legacy subscriptions."
+    }
+  ]
+}

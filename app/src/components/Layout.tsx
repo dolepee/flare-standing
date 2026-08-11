@@ -35,7 +35,7 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const { pathname } = useLocation()
-  const demoRoute = pathname.replace(/\/+$/, '') === '/demo'
+  const demoRoute = pathname.replace(/\/+$/, '').toLowerCase() === '/demo'
 
   useEffect(() => {
     if (!menuOpen) return

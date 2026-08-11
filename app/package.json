@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/generate-route-html.mjs",
     "lint": "oxlint",
     "test": "vitest run",
     "test:browser": "playwright test",
-    "test:pages": "node --test scripts/prepare-github-pages.test.mjs",
+    "test:pages": "node --test scripts/*.test.mjs",
     "pages:prepare": "node scripts/prepare-github-pages.mjs",
     "preview": "vite preview"
   },

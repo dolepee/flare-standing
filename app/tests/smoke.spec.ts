@@ -5,6 +5,8 @@ test('stable routes publish one matching canonical and Open Graph URL', async ({
     ['/', 'Standing | Pay in XRP, land subscribed on Flare', 'https://standing.dolepee.com/'],
     ['/demo', 'Wallet-Free XRP Subscription Demo | Standing', 'https://standing.dolepee.com/demo'],
     ['/evidence', 'Verified XRP-to-Flare Receipts | Standing', 'https://standing.dolepee.com/evidence'],
+    ['/Demo', 'Wallet-Free XRP Subscription Demo | Standing', 'https://standing.dolepee.com/demo'],
+    ['/EVIDENCE', 'Verified XRP-to-Flare Receipts | Standing', 'https://standing.dolepee.com/evidence'],
   ] as const
 
   for (const [path, title, canonicalUrl] of expected) {
