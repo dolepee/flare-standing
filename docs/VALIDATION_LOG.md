@@ -103,6 +103,18 @@ deployment below. The final legacy-recovery increment was reviewed at PR head
   - last charge: `2026-08-10T21:58:13Z`
   - next charge: `2026-08-10T22:08:13Z`
 
+- Fast-cadence plan retirement:
+  `0xcfd0bafe9ce0c954727171862a0a24966cd50dfc6e15f6a25d93404e0ce73c17`
+  - receipt status: success; block `33,916,812`; timestamp `2026-08-11T10:58:36Z`
+  - sender: exact plan 1 merchant/operator
+    `0x9C7169BAAB226ABCC5C20d1CabebA8BaB9ea99dd`
+  - plan 1 active: `false`; new opens and later charges are blocked
+  - mandate 1: uncanceled; `200,000` atomic FTestXRP remains recoverable by its
+    XRPL-derived Smart Account subscriber
+  - plan 2 active: `true`; mandate 2 remained at `90,000` atomic FTestXRP
+  - historical open and recurrence receipts remain immutable and independently
+    verifiable
+
 This is the current primary proof: one XRP payment produced an immediately
 useful paid subscription state on Flare. It is controlled-builder testnet
 evidence, not mainnet usage, production revenue, or external adoption.

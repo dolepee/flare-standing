@@ -173,6 +173,15 @@ a point-in-time receipt snapshot; the public app's live panel is authoritative
 for the current balance. The receipt sender is
 `0x232C36580360d3E717fc1A583cDd5bEe0fEE7D7D`.
 
+After capturing that recurrence proof, the operator intentionally retired
+fast-cadence plan 1 in
+[transaction `0xcfd0…73c17`](https://coston2-explorer.flare.network/tx/0xcfd0bafe9ce0c954727171862a0a24966cd50dfc6e15f6a25d93404e0ce73c17)
+at block `33,916,812`. The plan is inactive for new mandates and later charges,
+while the Smart Account subscriber retains its contract-level cancellation and
+exact-withdrawal rights. At that retirement block, mandate 1 remained
+uncanceled with `200,000` atomic FTestXRP of recoverable capacity. The immutable
+open and keeper receipts above remain the historical recurrence proof.
+
 ### Durable judge showcase
 
 A separate long-lived V2 mandate keeps the product result inspectable through
