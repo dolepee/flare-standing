@@ -71,6 +71,8 @@ test('first fold leads with the immediately useful XRP-funded subscription', asy
   await expect(page.getByRole('heading', { name: 'Mandate 2 paid through judging' })).toBeVisible()
   await expect(page.getByText('Paid · active')).toBeVisible()
   await expect(page.getByText('Snapshot block')).toBeVisible()
+  await expect(page.getByText('1 historical replay · #2 durable')).toBeVisible()
+  await expect(page.getByText(/due by schedule/)).toHaveCount(0)
   await expect(page.getByRole('link', { name: /Open live subscriber demo/ })).toHaveAttribute('href', '/demo')
 })
 

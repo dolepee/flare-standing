@@ -7,14 +7,14 @@ import { STANDING_ADDRESS } from '../config'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
 import { formatFxrp, runUiAction, shortAddress } from '../lib/format'
-import { JUDGE_DEMO } from '../lib/judgeDemo'
+import { countHistoricalReplayMandates, JUDGE_DEMO } from '../lib/judgeDemo'
 import { getPlanProfile } from '../lib/planCatalog'
 
 export function DashboardPage() {
   const { account, connected } = useWallet()
   const { state, loading, initialized, error, refresh } = useProtocol()
   const ownedMandates = state.mandates.filter((mandate) => mandate.subscriber.toLowerCase() === account?.toLowerCase())
-  const dueCount = state.mandates.filter((mandate) => !mandate.canceled && mandate.nextChargeAt <= state.chainTimestamp).length
+  const historicalProofCount = countHistoricalReplayMandates(state.mandates)
   const showcaseMandate = state.mandates.find((mandate) => mandate.id === JUDGE_DEMO.mandateId)
   const showcasePlan = state.plans.find((plan) => plan.id === JUDGE_DEMO.planId)
 
@@ -81,7 +81,11 @@ export function DashboardPage() {
 
         <div className="metrics-grid" aria-label="Protocol metrics">
           <Metric label="Active Coston2 plans" value={initialized ? state.plans.filter((plan) => plan.active).length.toString() : '—'} detail={initialized ? `${state.planCount} created` : 'Reading testnet'} />
-          <Metric label="Testnet mandates" value={initialized ? state.mandateCount.toString() : '—'} detail={initialized ? `${dueCount} due by schedule` : 'Reading testnet'} />
+          <Metric
+            label="Testnet mandates"
+            value={initialized ? state.mandateCount.toString() : '—'}
+            detail={initialized ? `${historicalProofCount} historical replay · #${JUDGE_DEMO.mandateId.toString()} durable` : 'Reading testnet'}
+          />
           <Metric label="Protocol custody" value={initialized ? `${formatFxrp(state.contractBalance)} FTestXRP` : '—'} detail="Mandates + accrued claims" />
           <Metric label="Protocol fee" value={initialized ? `${state.feeBps / 100}%` : '—'} detail="Per successful charge" />
         </div>
