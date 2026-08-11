@@ -5,6 +5,7 @@ import { isSameAddress } from './format'
 export const JUDGE_DEMO = Object.freeze({
   planId: 2n,
   mandateId: 2n,
+  historicalReplayMandateId: 1n,
   merchant: '0x4BFed030961344Fe9Ac1B59f31D9f29740aD437a',
   subscriber: '0x40Ec816838Cff78FC20a51bB1C33DEC57c67eAe0',
   priceFxrp: 10_000n,
@@ -22,6 +23,10 @@ export const JUDGE_DEMO = Object.freeze({
   planHref: `${COSTON2_EXPLORER}/tx/0xc871264b7208791409a1b77aa8c9609f37aaae33351e481b60bfe40e510a51ac`,
   coston2Href: `${COSTON2_EXPLORER}/tx/0x4bef577198ef681b4778ce2f023676ee7678a78432b2928f75271815f5ca9de5`,
 })
+
+export function countHistoricalReplayMandates(mandates: StandingMandate[]) {
+  return mandates.filter((mandate) => mandate.id === JUDGE_DEMO.historicalReplayMandateId).length
+}
 
 export type JudgeDemoReplayStep = {
   id: 'authorize' | 'prove' | 'unlock'

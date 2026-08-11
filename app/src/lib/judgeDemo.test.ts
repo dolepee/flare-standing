@@ -1,6 +1,6 @@
 import type { StandingMandate, StandingPlan } from '../contracts'
 import { describe, expect, it } from 'vitest'
-import { JUDGE_DEMO, resolveJudgeDemo } from './judgeDemo'
+import { countHistoricalReplayMandates, JUDGE_DEMO, resolveJudgeDemo } from './judgeDemo'
 
 const plan: StandingPlan = {
   id: JUDGE_DEMO.planId,
@@ -23,6 +23,13 @@ const mandate: StandingMandate = {
 }
 
 describe('wallet-free judge demo', () => {
+  it('never mislabels new checkout mandates as historical replay evidence', () => {
+    const historicalReplay = { ...mandate, id: JUDGE_DEMO.historicalReplayMandateId }
+    const futureCheckout = { ...mandate, id: 3n }
+
+    expect(countHistoricalReplayMandates([historicalReplay, mandate, futureCheckout])).toBe(1)
+  })
+
   it('unlocks only the exact paid mandate during its live access window', () => {
     const result = resolveJudgeDemo([plan], [mandate], JUDGE_DEMO.openedAt + 1n)
     expect(result.status).toBe('active')
