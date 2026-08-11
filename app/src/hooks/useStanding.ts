@@ -11,6 +11,7 @@ import { publicClient } from '../lib/chain'
 import { errorMessage } from '../lib/format'
 
 type ProtocolState = {
+  snapshotBlockNumber: bigint
   chainTimestamp: bigint
   planCount: bigint
   mandateCount: bigint
@@ -28,6 +29,7 @@ type ProtocolState = {
 }
 
 const emptyState: ProtocolState = {
+  snapshotBlockNumber: 0n,
   chainTimestamp: 0n,
   planCount: 0n,
   mandateCount: 0n,
@@ -60,15 +62,18 @@ export function useStanding(account?: Address) {
 
     setLoading(true)
     try {
+      const latestBlock = await publicClient.getBlock({ blockTag: 'latest' })
+      if (latestBlock.number === null) throw new Error('Latest Coston2 block has no number')
+      const blockNumber = latestBlock.number
       const [planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
         await Promise.all([
-          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'planCount' }),
-          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'mandateCount' }),
-          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'contractBalance' }),
-          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'paused' }),
-          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'feeBps' }),
-          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'maxPriceAge' }),
-          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'treasury' }),
+          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'planCount', blockNumber }),
+          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'mandateCount', blockNumber }),
+          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'contractBalance', blockNumber }),
+          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'paused', blockNumber }),
+          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'feeBps', blockNumber }),
+          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'maxPriceAge', blockNumber }),
+          publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'treasury', blockNumber }),
         ])
 
       const planIds = Array.from({ length: Number(planCount) }, (_, index) => BigInt(index + 1))
@@ -83,6 +88,7 @@ export function useStanding(account?: Address) {
                 abi: standingAbi,
                 functionName: 'plans',
                 args: [id],
+                blockNumber,
               }),
             ),
           ),
@@ -93,11 +99,12 @@ export function useStanding(account?: Address) {
                 abi: standingAbi,
                 functionName: 'mandates',
                 args: [id],
+                blockNumber,
               }),
             ),
           ),
           account
-            ? publicClient.readContract({ address: FXRP_ADDRESS, abi: erc20Abi, functionName: 'balanceOf', args: [account] })
+            ? publicClient.readContract({ address: FXRP_ADDRESS, abi: erc20Abi, functionName: 'balanceOf', args: [account], blockNumber })
             : Promise.resolve(0n),
           account
             ? publicClient.readContract({
@@ -105,6 +112,7 @@ export function useStanding(account?: Address) {
                 abi: erc20Abi,
                 functionName: 'allowance',
                 args: [account, STANDING_ADDRESS],
+                blockNumber,
               })
             : Promise.resolve(0n),
           account
@@ -113,6 +121,7 @@ export function useStanding(account?: Address) {
                 abi: standingAbi,
                 functionName: 'merchantBalance',
                 args: [account],
+                blockNumber,
               })
             : Promise.resolve(0n),
         ])
@@ -135,11 +144,10 @@ export function useStanding(account?: Address) {
         lastChargeAt: mandate[5],
         canceled: mandate[6],
       }))
-      const latestBlock = await publicClient.getBlock({ blockTag: 'latest' })
-
       if (!isCurrentRequest()) return
       setError(undefined)
       setState({
+        snapshotBlockNumber: blockNumber,
         chainTimestamp: latestBlock.timestamp,
         planCount,
         mandateCount,

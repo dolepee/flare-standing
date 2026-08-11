@@ -8,6 +8,7 @@ export const RPC_CALL_TIMEOUT_MS = 5_000
 export const RECEIPT_TIMEOUT_MS = 10_000
 export const STANDING_V2_CAPABILITY = '0x95b0f893ac5f1434738e3ebdeada0989770f34f6b1c9bce29e2f2534a7ba1e81'
 export const MIN_KEEPER_BALANCE_WEI = 2_000_000_000_000_000_000n
+export const HOSTED_KEEPER_MANDATE_ID = 2n
 
 export const coston2 = {
   id: 114,
@@ -113,6 +114,37 @@ function positiveInteger(value, label) {
   return value
 }
 
+function normalizeKeeperMandateIds(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error('KEEPER_MANDATE_IDS must contain at least one mandate ID')
+  }
+  const seen = new Set()
+  return values.map((value) => {
+    if (typeof value !== 'bigint' || value <= 0n) {
+      throw new Error('KEEPER_MANDATE_IDS must contain only positive decimal mandate IDs')
+    }
+    const key = value.toString()
+    if (seen.has(key)) throw new Error(`KEEPER_MANDATE_IDS contains duplicate mandate ID ${key}`)
+    seen.add(key)
+    return value
+  })
+}
+
+export function parseKeeperMandateIds(raw) {
+  if (typeof raw !== 'string' || !/^[1-9]\d*(,[1-9]\d*)*$/.test(raw)) {
+    throw new Error('KEEPER_MANDATE_IDS must be a nonempty comma-separated list of positive decimal mandate IDs')
+  }
+  return normalizeKeeperMandateIds(raw.split(',').map((value) => BigInt(value)))
+}
+
+export function parseHostedKeeperMandateIds(raw) {
+  const mandateIds = parseKeeperMandateIds(raw)
+  if (mandateIds.length !== 1 || mandateIds[0] !== HOSTED_KEEPER_MANDATE_ID) {
+    throw new Error(`hosted keeper is pinned to mandate ${HOSTED_KEEPER_MANDATE_ID}`)
+  }
+  return mandateIds
+}
+
 function timedCall(operation, timeoutMs, label) {
   const duration = positiveInteger(Math.floor(timeoutMs), `${label} timeout`)
   let timer
@@ -140,6 +172,7 @@ export async function runKeeper({
   publicClient,
   walletClient,
   standing,
+  mandateIds,
   maxMandatesPerRun = HARD_MAX_MANDATES_PER_RUN,
   scanCursor,
   log = emit,
@@ -151,6 +184,7 @@ export async function runKeeper({
   nowMs = monotonicNowMs,
 }) {
   standing = getAddress(standing)
+  mandateIds = normalizeKeeperMandateIds(mandateIds)
   positiveInteger(snapshotTimeoutMs, 'keeper snapshot timeout')
   positiveInteger(mandateBudgetMs, 'keeper mandate budget')
   positiveInteger(rpcCallTimeoutMs, 'keeper RPC timeout')
@@ -182,26 +216,35 @@ export async function runKeeper({
     balanceWei: keeperBalance.toString(),
     minimumBalanceWei: MIN_KEEPER_BALANCE_WEI.toString(),
     maxMandatesPerRun: maxMandatesPerRun.toString(),
+    allowedMandateIds: mandateIds.map(String),
   })
   if (keeperBalance < MIN_KEEPER_BALANCE_WEI) {
     throw new Error(`keeper balance ${keeperBalance} is below the ${MIN_KEEPER_BALANCE_WEI} wei operating floor`)
   }
 
+  const missingMandateId = mandateIds.find((mandateId) => mandateId > count)
+  if (missingMandateId !== undefined) {
+    throw new Error(`KEEPER_MANDATE_IDS includes nonexistent mandate ${missingMandateId}; current mandate count is ${count}`)
+  }
+
   if (paused) {
-    log('scan_skipped', { reason: 'protocol_paused', mandateCount: count.toString() })
+    log('scan_skipped', {
+      reason: 'protocol_paused',
+      mandateCount: count.toString(),
+      allowedMandateIds: mandateIds.map(String),
+    })
     return { scanned: 0, submitted: 0, skipped: 0 }
   }
 
-  const pageCount = count === 0n ? 1n : (count + maxMandatesPerRun - 1n) / maxMandatesPerRun
+  const allowedCount = BigInt(mandateIds.length)
+  const pageCount = (allowedCount + maxMandatesPerRun - 1n) / maxMandatesPerRun
   if (pageCount > 1n && (typeof scanCursor !== 'bigint' || scanCursor < 0n)) {
     throw new Error('KEEPER_SCAN_CURSOR must be a non-negative integer when mandate paging is required')
   }
   const page = pageCount === 1n ? 0n : scanCursor % pageCount
-  const firstMandateId = page * maxMandatesPerRun + 1n
-  const lastMandateId = count < firstMandateId + maxMandatesPerRun - 1n
-    ? count
-    : firstMandateId + maxMandatesPerRun - 1n
-  const mandatesInPage = lastMandateId >= firstMandateId ? lastMandateId - firstMandateId + 1n : 0n
+  const pageStart = Number(page * maxMandatesPerRun)
+  const pageMandateIds = mandateIds.slice(pageStart, pageStart + Number(maxMandatesPerRun))
+  const mandatesInPage = BigInt(pageMandateIds.length)
   // Each later visit to the same page begins one item farther into it. If a
   // submitted transaction has an uncertain result and stops that visit, no
   // single pathological mandate can permanently starve the page tail.
@@ -212,10 +255,11 @@ export async function runKeeper({
       page: page.toString(),
       pageCount: pageCount.toString(),
       scanCursor: scanCursor.toString(),
-      firstMandateId: firstMandateId.toString(),
-      lastMandateId: lastMandateId.toString(),
-      startMandateId: mandatesInPage === 0n ? null : (firstMandateId + startOffset).toString(),
+      firstMandateId: pageMandateIds[0]?.toString() ?? null,
+      lastMandateId: pageMandateIds.at(-1)?.toString() ?? null,
+      startMandateId: mandatesInPage === 0n ? null : pageMandateIds[Number(startOffset)].toString(),
       mandateCount: count.toString(),
+      allowedMandateCount: allowedCount.toString(),
     })
   }
 
@@ -226,7 +270,7 @@ export async function runKeeper({
   let priceAdapter
   const planCache = new Map()
   for (let pageIndex = 0n; pageIndex < mandatesInPage; pageIndex += 1n) {
-    const mandateId = firstMandateId + ((startOffset + pageIndex) % mandatesInPage)
+    const mandateId = pageMandateIds[Number((startOffset + pageIndex) % mandatesInPage)]
     scanned += 1
     const deadlineAt = nowMs() + mandateBudgetMs
     const call = (label, operation, maxWaitMs = rpcCallTimeoutMs) => deadlineCall({
@@ -422,6 +466,7 @@ export async function runKeeper({
 
   log('scan_complete', {
     mandateCount: count.toString(),
+    allowedMandateIds: mandateIds.map(String),
     scanned,
     submitted,
     skipped,
@@ -433,6 +478,7 @@ export async function runKeeper({
 }
 
 async function main() {
+  const mandateIds = parseHostedKeeperMandateIds(process.env.KEEPER_MANDATE_IDS)
   const key = process.env.KEEPER_PRIVATE_KEY
   if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) throw new Error('KEEPER_PRIVATE_KEY must be a 32-byte hex private key')
   const standing = getAddress(process.env.STANDING_ADDRESS ?? '')
@@ -450,7 +496,7 @@ async function main() {
   const walletClient = createWalletClient({ account, chain: coston2, transport })
   const chainId = await publicClient.getChainId()
   if (chainId !== coston2.id) throw new Error(`refusing keeper on chain ${chainId}; expected ${coston2.id}`)
-  await runKeeper({ publicClient, walletClient, standing, scanCursor })
+  await runKeeper({ publicClient, walletClient, standing, mandateIds, scanCursor })
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

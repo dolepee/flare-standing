@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 const manifest = JSON.parse(readFileSync(new URL('../deployments/coston2.json', import.meta.url), 'utf8'))
 const config = readFileSync(new URL('../app/src/config.ts', import.meta.url), 'utf8')
-const dashboard = readFileSync(new URL('../app/src/pages/DashboardPage.tsx', import.meta.url), 'utf8')
+const judgeDemo = readFileSync(new URL('../app/src/lib/judgeDemo.ts', import.meta.url), 'utf8')
 
 function requireMatch(source, pattern, label) {
   const match = source.match(pattern)
@@ -19,7 +19,8 @@ const configuredFxrp = requireMatch(config, /FXRP_ADDRESS = '(0x[0-9a-fA-F]{40})
 const configuredAdapter = requireMatch(config, /FTSO_ADAPTER_ADDRESS = '(0x[0-9a-fA-F]{40})'/, 'FTSO_ADAPTER_ADDRESS')
 const configuredBlock = Number(requireMatch(config, /DEPLOY_BLOCK = ([0-9_]+)n/, 'DEPLOY_BLOCK').replaceAll('_', ''))
 const configuredV2 = requireMatch(config, /V2_CHECKOUT_DEPLOYED = (true|false)/, 'V2_CHECKOUT_DEPLOYED') === 'true'
-const checkoutPlanId = Number(requireMatch(dashboard, /to="\/checkout\/(\d+)"/, 'primary checkout plan id'))
+const judgeDemoPlanId = Number(requireMatch(judgeDemo, /planId: (\d+)n/, 'judge demo plan id'))
+const judgeDemoMandateId = Number(requireMatch(judgeDemo, /mandateId: (\d+)n/, 'judge demo mandate id'))
 
 const mismatches = []
 if (manifest.chainId !== 114) mismatches.push(`chainId ${manifest.chainId} != 114`)
@@ -28,7 +29,8 @@ if (!sameAddress(configuredFxrp, manifest.fxrpAddress)) mismatches.push('app FXR
 if (!sameAddress(configuredAdapter, manifest.priceAdapterAddress)) mismatches.push('app price adapter address')
 if (configuredBlock !== manifest.deployBlock) mismatches.push('app deploy block')
 if (configuredV2 !== manifest.v2CheckoutDeployed) mismatches.push('app V2 checkout flag')
-if (checkoutPlanId !== manifest.primaryCheckoutPlanId) mismatches.push('homepage checkout plan')
+if (judgeDemoPlanId !== manifest.judgeDemoPlanId) mismatches.push('judge demo plan')
+if (judgeDemoMandateId !== manifest.judgeDemoMandateId) mismatches.push('judge demo mandate')
 
 const keeperAddress = process.env.KEEPER_STANDING_ADDRESS
 if (keeperAddress && !sameAddress(keeperAddress, manifest.standingAddress)) {

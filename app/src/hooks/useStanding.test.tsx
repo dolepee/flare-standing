@@ -24,7 +24,7 @@ function deferred<T>() {
 describe('useStanding', () => {
   beforeEach(() => {
     mocks.getBlock.mockReset()
-    mocks.getBlock.mockResolvedValue({ timestamp: 200n })
+    mocks.getBlock.mockResolvedValue({ number: 100n, timestamp: 200n })
     mocks.readContract.mockReset()
   })
 
@@ -62,6 +62,7 @@ describe('useStanding', () => {
     })
     expect(result.current.error).toBeUndefined()
     expect(result.current.initialized).toBe(true)
+    expect(result.current.state.snapshotBlockNumber).toBe(100n)
     expect(result.current.state.chainTimestamp).toBe(200n)
   })
 
@@ -99,5 +100,27 @@ describe('useStanding', () => {
     expect(result.current.state.walletBalance).toBe(2_000_000n)
     expect(result.current.state.walletAllowance).toBe(2n)
     expect(result.current.state.merchantBalance).toBe(20n)
+  })
+
+  it('pins every contract read to one coherent Coston2 block', async () => {
+    mocks.readContract.mockImplementation((input) => {
+      if (!input) return 0n
+      const { functionName } = input
+      if (functionName === 'planCount' || functionName === 'mandateCount' || functionName === 'contractBalance') return 0n
+      if (functionName === 'paused') return false
+      if (functionName === 'feeBps') return 0
+      if (functionName === 'maxPriceAge') return 60n
+      if (functionName === 'treasury') return zeroAddress
+      throw new Error(`Unexpected read: ${functionName}`)
+    })
+
+    const { result } = renderHook(() => useStanding())
+    await waitFor(() => expect(result.current.initialized).toBe(true))
+
+    expect(result.current.state.snapshotBlockNumber).toBe(100n)
+    expect(mocks.readContract).toHaveBeenCalled()
+    for (const [input] of mocks.readContract.mock.calls) {
+      expect(input.blockNumber).toBe(100n)
+    }
   })
 })

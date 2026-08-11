@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-for (const path of ['/', '/plans', '/checkout/1', '/mandates', '/access/1', '/merchant', '/evidence', '/legacy-recovery']) {
+for (const path of ['/', '/demo', '/plans', '/checkout/1', '/mandates', '/access/1', '/merchant', '/evidence', '/legacy-recovery']) {
   test(`${path} renders without horizontal overflow`, async ({ page }) => {
     const errors: string[] = []
     const failedRequests: string[] = []
@@ -40,13 +40,84 @@ test('first fold leads with the immediately useful XRP-funded subscription', asy
   await expect(page.getByRole('heading', { name: 'Pay in XRP. Land subscribed on Flare.' })).toBeVisible()
   await expect(page.getByText('Immediate proof', { exact: true })).toBeVisible()
   await expect(page.getByText('Live V2 checkout', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Open exact XRPL transaction/ })).toHaveAttribute('href', /54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD$/)
-  await page.getByRole('button', { name: /03 Activate access/ }).click()
-  await expect(page.getByRole('heading', { name: 'The subscription opens and pays immediately.' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Inspect open \+ first-charge receipt/ })).toHaveAttribute('href', /0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9$/)
-  await expect(page.getByRole('heading', { name: 'Mandate 1 now' })).toBeVisible()
-  await expect(page.getByText(/Paid · (active|charge due)/)).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Try Coston2 checkout' })).toHaveAttribute('href', '/checkout/1')
+  await expect(page.getByRole('link', { name: /Inspect exact XRP authorization/ })).toHaveAttribute('href', /670CB8D1C19E562EF8BF73D006672E2AC56FAF0D29560F025FED68DF315B0595$/)
+  await page.getByRole('button', { name: /03 Unlock access/ }).click()
+  await expect(page.getByRole('heading', { name: 'The first cycle pays and the useful result opens immediately.' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Inspect mandate open \+ first charge/ })).toHaveAttribute('href', /0x4bef577198ef681b4778ce2f023676ee7678a78432b2928f75271815f5ca9de5$/)
+  await expect(page.getByRole('heading', { name: 'Mandate 2 paid through judging' })).toBeVisible()
+  await expect(page.getByText('Paid · active')).toBeVisible()
+  await expect(page.getByText('Snapshot block')).toBeVisible()
+  await expect(page.getByRole('link', { name: /Open live subscriber demo/ })).toHaveAttribute('href', '/demo')
+})
+
+test('wallet-free demo returns the live paid artifact from the exact durable mandate', async ({ page }) => {
+  await page.goto('/demo')
+  await expect(page.getByRole('heading', { name: 'An XRP payment unlocked this subscriber brief.' })).toBeVisible()
+  await expect(page.getByText('Access paid')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'A launch-ready policy for bounded recurring access.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Mandate #2 now' })).toBeVisible()
+  await expect(page.getByText('0.09 of 0.1 FTestXRP')).toBeVisible()
+  await expect(page.getByText('9 cycles at current fixed price')).toBeVisible()
+  await expect(page.getByText('0.3 XRP authorized')).toBeVisible()
+  await expect(page.getByText('0.1 deposited · 0.1 subscriber-owned')).toBeVisible()
+  await expect(page.getByText('0.1 testnet mint fee')).toBeVisible()
+  await expect(page.getByText('0.01 first cycle paid')).toBeVisible()
+  await expect(page.getByText('Creator-ready terms')).toBeVisible()
+  await expect(page.getByText('0.01 FTestXRP every 14 days · 0.1 FTestXRP cap')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy exact terms' })).toBeVisible()
+  await expect(page.getByText('Snapshot block')).toBeVisible()
+  await expect(page.getByRole('link', { name: /Inspect XRP payment/ })).toHaveAttribute('href', /670CB8D1C19E562EF8BF73D006672E2AC56FAF0D29560F025FED68DF315B0595$/)
+  await expect(page.getByRole('link', { name: /Inspect atomic activation/ })).toHaveAttribute('href', /0x4bef577198ef681b4778ce2f023676ee7678a78432b2928f75271815f5ca9de5$/)
+  await expect(page.getByRole('button', { name: /Connect wallet/ })).toHaveCount(0)
+  await expect(page.getByText('No wallet needed', { exact: true })).toBeVisible()
+  await expect(page.locator('main').getByRole('button', { name: /Switch|Approve|Open|Charge|Cancel|Withdraw/i })).toHaveCount(0)
+})
+
+test('creator-ready live terms can be copied with the keyboard', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          ;(window as typeof window & { copiedCreatorTerms?: string }).copiedCreatorTerms = value
+        },
+      },
+    })
+  })
+  await page.goto('/demo')
+  const copyButton = page.getByRole('button', { name: 'Copy exact terms' })
+  await copyButton.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: 'Terms copied' })).toBeVisible()
+  await expect(page.getByRole('status')).toHaveText('Creator-ready terms copied to the clipboard.')
+  const copiedTerms = await page.evaluate(() => (window as typeof window & { copiedCreatorTerms?: string }).copiedCreatorTerms)
+  expect(copiedTerms).toContain('Price: 0.01 FTestXRP every 14 days')
+  expect(copiedTerms).toContain('Prepaid cap: 0.1 FTestXRP')
+  expect(copiedTerms).toContain('Exit: The subscriber may cancel without merchant permission')
+  expect(copiedTerms).toContain('Production requirement: Authenticate subscriber ownership')
+})
+
+test('blocked clipboard access exposes an accessible selected manual-copy fallback', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async () => Promise.reject(new Error('Clipboard blocked for test')),
+      },
+    })
+  })
+  await page.goto('/demo')
+  await page.getByRole('button', { name: 'Copy exact terms' }).click()
+  await expect(page.getByRole('status')).toContainText('Automatic copy was blocked')
+  const fallback = page.getByRole('textbox', { name: 'Creator-ready subscription terms to copy manually' })
+  await expect(fallback).toBeVisible()
+  await expect(fallback).toBeFocused()
+  await expect(fallback).toHaveValue(/Current capacity: 0\.09 FTestXRP \(9 fixed-price cycles\)/)
+  const selection = await fallback.evaluate((element) => {
+    const textarea = element as HTMLTextAreaElement
+    return [textarea.selectionStart, textarea.selectionEnd, textarea.value.length]
+  })
+  expect(selection).toEqual([0, selection[2], selection[2]])
 })
 
 test('fixed-price checkout displays the exact initial charge ceiling', async ({ page }) => {
@@ -133,6 +204,17 @@ test.describe('mobile navigation', () => {
     await expect(page).toHaveURL(/\/evidence$/)
     await expect(page.getByRole('heading', { name: 'Inspect every proof at its source.' })).toBeVisible()
   })
+
+  test('keeps the product result and paid artifact in the first fold', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByRole('link', { name: /Open live subscriber demo/ })).toBeInViewport()
+
+    await page.goto('/demo')
+    await expect(page.getByRole('heading', { name: 'An XRP payment unlocked this subscriber brief.' })).toBeInViewport()
+    await expect(page.getByText('Access paid')).toBeInViewport()
+    await expect(page.getByText('XRP SUBSCRIPTION LAUNCH BRIEF')).toBeInViewport()
+    await expect(page.getByRole('heading', { name: 'A launch-ready policy for bounded recurring access.' })).toBeInViewport()
+  })
 })
 
 test('evidence publishes the bounded external pilot and its closeout proofs', async ({ page }) => {
@@ -141,7 +223,8 @@ test('evidence publishes the bounded external pilot and its closeout proofs', as
   await expect(page.getByRole('link', { name: /User-authorized XRP payment/ })).toHaveAttribute('href', /54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD$/)
   await expect(page.getByRole('link', { name: /Direct mint \+ open \+ first charge/ })).toHaveAttribute('href', /0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9$/)
   await expect(page.getByRole('link', { name: /Permissionless recurring keeper charge/ })).toHaveAttribute('href', /0x8c3333505617ef62e2b2823cb0c95ce4ee81a6e601e80978b285865f94d5a2a9$/)
-  await expect(page.getByText('0.1 charged · 0.099 merchant · 0.001 fee · 0.9 remains')).toBeVisible()
+  await expect(page.getByText(/Opening snapshot · block 33,893,083 · 0\.1 charged · 0\.9 remained/)).toBeVisible()
+  await expect(page.getByText(/Recurrence snapshot · block 33,893,456 · different sender · 0\.8 remained/)).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Separate addresses completed a Coston2 billing loop.' })).toBeVisible()
   await expect(page.getByText('Standing made the recurring Coston2 payment lifecycle easy to verify from plan creation through merchant withdrawal.')).toBeVisible()
   await expect(page.getByText(/Virtual attribution, participant independence, and the quote are attestations/i)).toBeVisible()

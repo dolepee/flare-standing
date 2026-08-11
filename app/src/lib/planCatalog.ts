@@ -17,6 +17,7 @@ type CatalogEntry = PlanProfile & {
 }
 
 const REFERENCE_MERCHANT = '0x9C7169BAAB226ABCC5C20d1CabebA8BaB9ea99dd' as const
+const DURABLE_DEMO_MERCHANT = '0x4BFed030961344Fe9Ac1B59f31D9f29740aD437a' as const
 
 const planCatalog: Record<string, CatalogEntry> = {
   '1': {
@@ -29,6 +30,18 @@ const planCatalog: Record<string, CatalogEntry> = {
     accessTitle: 'Atomic XRP subscriber brief',
     accessSummary: 'A test edition unlocked by the first successful charge in the mandate-open transaction.',
     benefits: ['Immediate first-cycle access', 'Bounded recurring capacity', 'Onchain cancellation and refund'],
+    operatorControlled: true,
+  },
+  '2': {
+    merchant: DURABLE_DEMO_MERCHANT,
+    name: 'XRP Subscription Launch Brief',
+    merchantName: 'Standing Durable Pilot',
+    summary: 'A 14-day testnet pass kept visibly useful through the judging window.',
+    description:
+      'Pay the first fixed cycle immediately, retain nine future cycles of bounded capacity, and keep unilateral cancellation and refund rights.',
+    accessTitle: 'XRP subscription launch policy',
+    accessSummary: 'A creator-ready launch policy unlocked only while the exact long-lived Coston2 mandate is paid.',
+    benefits: ['Fourteen-day paid window', 'Fixed 0.01 FTestXRP cycle', 'Onchain cancellation and refund'],
     operatorControlled: true,
   },
 }

@@ -59,32 +59,37 @@ as an independent audit finding.
 The current V2 contract is
 `0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7` on Coston2. A fresh controlled
 XRPL payment proved the immediate open-and-charge path against this exact
-deployment. The historical contracts predate these changes and remain only as
-recovery and receipt-verification surfaces; no proxy or upgrade path exists.
+deployment. The public app exposes the paused historical V1 deployment only
+for bounded subscriber recovery and receipt verification; V2 is the sole
+checkout contract. No proxy or upgrade path exists.
 
 ## Remaining boundaries
 
 - The accepted asset must be the verified FXRP/FTestXRP deployment configured at construction.
 - The owner can pause new mandate openings, top-ups, and charges, but cannot block cancellation or withdrawal of already-canceled funds.
 - The keeper is permissionless and does not receive custody.
-- The candidate hosted-keeper workflow is configured for a dedicated
-  low-balance key, a 2 C2FLR fail-closed operating floor, exact V2 identity and
-  chain checks, and bounded five-mandate paging keyed by GitHub's queued
+- The hosted-keeper workflow is configured for a dedicated
+  testnet-only key, a 2 C2FLR fail-closed operating floor, exact V2 identity and
+  chain checks, and an in-code plus in-workflow mandate-2 pin with no all-records
+  fallback. It uses bounded five-mandate paging keyed by GitHub's queued
   workflow-run ordinal. Its 10-second snapshot plus five 30-second mandate
   budgets admit at most 160 seconds of application work; an outer 180-second
   watchdog has a 10-second hard-stop. It performs preflight affordability checks,
   simulation, and exact-mandate receipt-event verification. An uncertain
   post-broadcast result stops the page after hash logging and state reconciliation;
   rotating the first item on later page visits prevents a pathological receipt from
-  permanently starving the tail. It is not a live-uptime claim
-  until the reviewed workflow runs from the default branch and the dedicated
-  key records a receipt. GitHub Actions scheduling remains best-effort and is
+  permanently starving the tail. A prior default-branch configuration used the
+  dedicated key to record the published mandate-1 charge receipt; the current
+  mandate-2-only build must not imply a renewal before mandate 2 is due. GitHub
+  Actions scheduling remains best-effort and is
   not a precise-cadence guarantee; `queue: max` serializes up to 100 pending actual
   invocations rather than replacing the prior pending run. The shell keeper remains
-  read-only by default.
+  read-only by default and is pinned to mandate 2 during the judge window. The
+  contract itself remains permissionless, so third parties can call a due mandate
+  directly even when Standing's hosted and shell keepers exclude it.
 - The client-side entitlement route is a reference integration, not a secure
   content boundary. A production merchant must authenticate the subscriber
   wallet and enforce entitlement server-side.
 - The app, atomic tool, and hosted-keeper package audits each report zero known
-  vulnerabilities on the 2026-08-10 candidate tree.
+  vulnerabilities on the 2026-08-11 candidate tree.
 - This is internal project hardening, not an independent external audit.

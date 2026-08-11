@@ -56,7 +56,7 @@ export function LegacyRecoveryPage() {
           <p><code>{HISTORICAL_V1_ADDRESS}</code></p>
         </div>
         <ol>
-          <li><History size={17} aria-hidden="true" /><span><strong>Inspect V1</strong>{state.mandateCount.toString()} historical mandates found</span></li>
+          <li><History size={17} aria-hidden="true" /><span><strong>Inspect V1</strong>{state.mandateCount.toString()} historical mandates at block #{state.snapshotBlockNumber.toLocaleString('en-US')}</span></li>
           <li><ShieldCheck size={17} aria-hidden="true" /><span><strong>Match subscriber</strong>Only the original browser-EOA subscriber sees an exit control</span></li>
           <li><span className="setup-step" aria-hidden="true">3</span><span><strong>Use Coston2</strong>Wallet network is rechecked before signing</span></li>
         </ol>

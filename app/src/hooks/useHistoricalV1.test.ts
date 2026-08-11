@@ -2,14 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HISTORICAL_V1_ADDRESS, STANDING_ADDRESS } from '../config'
 import { readHistoricalV1Snapshot } from './useHistoricalV1'
 
-const mocks = vi.hoisted(() => ({ readContract: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getBlock: vi.fn(), readContract: vi.fn() }))
 
 vi.mock('../lib/chain', () => ({
-  publicClient: { readContract: mocks.readContract },
+  publicClient: { getBlock: mocks.getBlock, readContract: mocks.readContract },
 }))
 
 describe('historical V1 reads', () => {
   beforeEach(() => {
+    mocks.getBlock.mockReset()
+    mocks.getBlock.mockResolvedValue({ number: 123n, timestamp: 456n })
     mocks.readContract.mockReset()
     mocks.readContract.mockImplementation(({ functionName }: { functionName: string }) => {
       if (functionName === 'planCount' || functionName === 'mandateCount') return 1n
@@ -42,12 +44,14 @@ describe('historical V1 reads', () => {
 
     expect(snapshot.planCount).toBe(1n)
     expect(snapshot.mandateCount).toBe(1n)
+    expect(snapshot.snapshotBlockNumber).toBe(123n)
     expect(snapshot.plans).toHaveLength(1)
     expect(snapshot.mandates).toHaveLength(1)
     expect(mocks.readContract).toHaveBeenCalledTimes(4)
     for (const [request] of mocks.readContract.mock.calls) {
       expect(request.address).toBe(HISTORICAL_V1_ADDRESS)
       expect(request.address.toLowerCase()).not.toBe(STANDING_ADDRESS.toLowerCase())
+      expect(request.blockNumber).toBe(123n)
     }
   })
 })

@@ -7,12 +7,13 @@ RUN_LIVE="${RUN_LIVE:-0}"
 KEEPER_INTERVAL_SECONDS="${KEEPER_INTERVAL_SECONDS:-20}"
 KEEPER_GAS_LIMIT="${KEEPER_GAS_LIMIT:-800000}"
 KEEPER_LOG_PATH="${KEEPER_LOG_PATH:-.standing/keeper.jsonl}"
+KEEPER_MANDATE_IDS="${KEEPER_MANDATE_IDS:-}"
 mode="${1:---once}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  script/standing-keeper.sh --once   Scan all mandates once (default).
+  script/standing-keeper.sh --once   Scan the pinned durable mandate once.
   script/standing-keeper.sh --loop   Repeat the scan under one process lock.
 
 The keeper is read-only by default. Set RUN_LIVE=1 and KEEPER_PRIVATE_KEY in
@@ -25,6 +26,7 @@ Optional environment:
   KEEPER_INTERVAL_SECONDS (default 20)
   KEEPER_GAS_LIMIT (default 800000)
   KEEPER_LOG_PATH (default .standing/keeper.jsonl)
+  KEEPER_MANDATE_IDS (must be exactly 2 during the judge window)
 EOF
 }
 
@@ -36,6 +38,11 @@ fi
 if [[ "$mode" != "--once" && "$mode" != "--loop" ]]; then
   usage >&2
   exit 2
+fi
+
+if [[ "$KEEPER_MANDATE_IDS" != "2" ]]; then
+  echo "Refusing keeper run: KEEPER_MANDATE_IDS must be exactly 2 during the judge window" >&2
+  exit 1
 fi
 
 mkdir -p "$(dirname "$KEEPER_LOG_PATH")"
@@ -111,7 +118,11 @@ scan_once() {
     return
   fi
 
-  for ((mandate_id = 1; mandate_id <= mandate_count; mandate_id++)); do
+  for mandate_id in 2; do
+    if [[ "$mandate_id" -gt "$mandate_count" ]]; then
+      echo "Refusing keeper run: mandate $mandate_id does not exist (count $mandate_count)" >&2
+      return 1
+    fi
     mandate_json="$(run_cast call "$STANDING_ADDRESS" 'mandate(uint256)(uint256,address,uint256,uint256,uint256,uint256,bool)' "$mandate_id" --rpc-url "$COSTON2_RPC" --json)"
     plan_id="$(run_jq -r '.[0]' <<<"$mandate_json")"
     remaining="$(run_jq -r '.[3]' <<<"$mandate_json")"
@@ -172,7 +183,7 @@ scan_once() {
     fi
   done
 
-  log_event "$(run_jq -cn --arg at "$now" --argjson mandateCount "$mandate_count" --arg mode "$scan_mode" '{at:($at|tonumber),event:"scan_complete",mandateCount:$mandateCount,mode:$mode}')"
+  log_event "$(run_jq -cn --arg at "$now" --argjson mandateCount "$mandate_count" --argjson mandateId 2 --arg mode "$scan_mode" '{at:($at|tonumber),event:"scan_complete",mandateCount:$mandateCount,allowedMandateIds:[$mandateId],mode:$mode}')"
 }
 
 scan_once

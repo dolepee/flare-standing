@@ -5,6 +5,7 @@ import { publicClient } from '../lib/chain'
 import { errorMessage } from '../lib/format'
 
 type HistoricalV1State = {
+  snapshotBlockNumber: bigint
   planCount: bigint
   mandateCount: bigint
   plans: StandingPlan[]
@@ -12,6 +13,7 @@ type HistoricalV1State = {
 }
 
 const emptyState: HistoricalV1State = {
+  snapshotBlockNumber: 0n,
   planCount: 0n,
   mandateCount: 0n,
   plans: [],
@@ -19,18 +21,23 @@ const emptyState: HistoricalV1State = {
 }
 
 export async function readHistoricalV1Snapshot(
-  client: Pick<typeof publicClient, 'readContract'> = publicClient,
+  client: Pick<typeof publicClient, 'getBlock' | 'readContract'> = publicClient,
 ): Promise<HistoricalV1State> {
+  const block = await client.getBlock({ blockTag: 'latest' })
+  if (block.number === null) throw new Error('Latest Coston2 block has no number')
+  const blockNumber = block.number
   const [planCount, mandateCount] = await Promise.all([
     client.readContract({
       address: HISTORICAL_V1_ADDRESS,
       abi: historicalV1RecoveryAbi,
       functionName: 'planCount',
+      blockNumber,
     }),
     client.readContract({
       address: HISTORICAL_V1_ADDRESS,
       abi: historicalV1RecoveryAbi,
       functionName: 'mandateCount',
+      blockNumber,
     }),
   ])
 
@@ -42,16 +49,19 @@ export async function readHistoricalV1Snapshot(
       abi: historicalV1RecoveryAbi,
       functionName: 'plans',
       args: [id],
+      blockNumber,
     }))),
     Promise.all(mandateIds.map((id) => client.readContract({
       address: HISTORICAL_V1_ADDRESS,
       abi: historicalV1RecoveryAbi,
       functionName: 'mandates',
       args: [id],
+      blockNumber,
     }))),
   ])
 
   return {
+    snapshotBlockNumber: blockNumber,
     planCount,
     mandateCount,
     plans: rawPlans.map((plan, index) => ({

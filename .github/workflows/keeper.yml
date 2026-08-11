@@ -5,7 +5,6 @@ permissions: {}
 on:
   schedule:
     - cron: '*/5 * * * *'
-  workflow_dispatch:
 
 concurrency:
   group: standing-coston2-keeper
@@ -32,10 +31,17 @@ jobs:
           cache: npm
           cache-dependency-path: tools/keeper/package-lock.json
       - run: npm ci --omit=dev
+      - name: Validate exact keeper mandate allowlist
+        env:
+          # Pin the durable judge mandate in reviewed workflow code. A mutable
+          # repository variable cannot opt the historical fast-cadence proof in.
+          KEEPER_MANDATE_IDS: '2'
+        run: node --input-type=module -e "import { parseHostedKeeperMandateIds } from './src/keeper.mjs'; parseHostedKeeperMandateIds(process.env.KEEPER_MANDATE_IDS)"
       - name: Charge due Coston2 mandates
         env:
           COSTON2_RPC: https://coston2-api.flare.network/ext/C/rpc
           STANDING_ADDRESS: ${{ vars.STANDING_ADDRESS }}
+          KEEPER_MANDATE_IDS: '2'
           KEEPER_PRIVATE_KEY: ${{ secrets.COSTON2_KEEPER_PRIVATE_KEY }}
           # A workflow invocation ordinal, unlike wall-clock time, advances once
           # per actual run even when best-effort schedules are delayed or missed.
