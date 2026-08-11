@@ -28,7 +28,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; text-decoration: none; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.45; }
-button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid rgba(39, 90, 113, 0.28); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(39, 90, 113, 0.28); outline-offset: 2px; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
@@ -120,7 +120,15 @@ main { flex: 1; }
 .demo-article { padding: 32px 34px 34px 39px; }
 .demo-article h2 { max-width: 650px; margin: 10px 0 12px; font-size: 30px; line-height: 1.16; font-weight: 600; }
 .demo-article > p { max-width: 650px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
-.demo-rules { margin: 28px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.demo-copy-ready { margin-top: 22px; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #cce0d2; border-radius: 6px; background: var(--green-soft); }
+.demo-copy-ready > div { min-width: 0; display: grid; gap: 5px; }
+.demo-copy-ready strong { font-size: 12px; line-height: 1.45; }
+.demo-copy-ready small { color: #59655c; font-size: 9px; line-height: 1.45; }
+.demo-copy-ready .button { flex: 0 0 auto; }
+.demo-copy-status { min-height: 16px; margin-top: 7px !important; color: #59655c !important; font-size: 9px !important; line-height: 1.5 !important; }
+.demo-copy-fallback { margin-top: 9px; display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.demo-copy-fallback textarea { width: 100%; min-height: 190px; padding: 12px; resize: vertical; border: 1px solid #aebcaf; border-radius: 5px; color: var(--ink); background: white; font: 500 10px/1.55 'DM Mono', monospace; }
+.demo-rules { margin: 18px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
 .demo-rules li { min-height: 88px; padding: 17px 0; display: grid; grid-template-columns: 34px 1fr; gap: 12px; border-bottom: 1px solid var(--line); }
 .demo-rules li > span { color: var(--green); font: 600 10px 'DM Mono', monospace; }
 .demo-rules strong { display: block; margin-bottom: 4px; font-size: 13px; }
@@ -437,6 +445,8 @@ footer a { color: var(--green); font-weight: 700; }
   .demo-artifact-header { min-height: 70px; padding: 16px 18px 15px 23px; }
   .demo-article { padding: 23px 20px 25px 25px; }
   .demo-article h2 { font-size: 24px; }
+  .demo-copy-ready { align-items: stretch; flex-direction: column; }
+  .demo-copy-ready .button { width: 100%; }
   .demo-rules { margin-top: 20px; }
   .demo-rules li { min-height: 76px; }
   .demo-unlock { padding: 14px 18px 14px 23px; }

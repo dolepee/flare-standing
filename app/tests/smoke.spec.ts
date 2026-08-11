@@ -62,12 +62,62 @@ test('wallet-free demo returns the live paid artifact from the exact durable man
   await expect(page.getByText('0.1 deposited · 0.1 subscriber-owned')).toBeVisible()
   await expect(page.getByText('0.1 testnet mint fee')).toBeVisible()
   await expect(page.getByText('0.01 first cycle paid')).toBeVisible()
+  await expect(page.getByText('Creator-ready terms')).toBeVisible()
+  await expect(page.getByText('0.01 FTestXRP every 14 days · 0.1 FTestXRP cap')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy exact terms' })).toBeVisible()
   await expect(page.getByText('Snapshot block')).toBeVisible()
   await expect(page.getByRole('link', { name: /Inspect XRP payment/ })).toHaveAttribute('href', /670CB8D1C19E562EF8BF73D006672E2AC56FAF0D29560F025FED68DF315B0595$/)
   await expect(page.getByRole('link', { name: /Inspect atomic activation/ })).toHaveAttribute('href', /0x4bef577198ef681b4778ce2f023676ee7678a78432b2928f75271815f5ca9de5$/)
   await expect(page.getByRole('button', { name: /Connect wallet/ })).toHaveCount(0)
   await expect(page.getByText('No wallet needed', { exact: true })).toBeVisible()
   await expect(page.locator('main').getByRole('button', { name: /Switch|Approve|Open|Charge|Cancel|Withdraw/i })).toHaveCount(0)
+})
+
+test('creator-ready live terms can be copied with the keyboard', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          ;(window as typeof window & { copiedCreatorTerms?: string }).copiedCreatorTerms = value
+        },
+      },
+    })
+  })
+  await page.goto('/demo')
+  const copyButton = page.getByRole('button', { name: 'Copy exact terms' })
+  await copyButton.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: 'Terms copied' })).toBeVisible()
+  await expect(page.getByRole('status')).toHaveText('Creator-ready terms copied to the clipboard.')
+  const copiedTerms = await page.evaluate(() => (window as typeof window & { copiedCreatorTerms?: string }).copiedCreatorTerms)
+  expect(copiedTerms).toContain('Price: 0.01 FTestXRP every 14 days')
+  expect(copiedTerms).toContain('Prepaid cap: 0.1 FTestXRP')
+  expect(copiedTerms).toContain('Exit: The subscriber may cancel without merchant permission')
+  expect(copiedTerms).toContain('Production requirement: Authenticate subscriber ownership')
+})
+
+test('blocked clipboard access exposes an accessible selected manual-copy fallback', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async () => Promise.reject(new Error('Clipboard blocked for test')),
+      },
+    })
+  })
+  await page.goto('/demo')
+  await page.getByRole('button', { name: 'Copy exact terms' }).click()
+  await expect(page.getByRole('status')).toContainText('Automatic copy was blocked')
+  const fallback = page.getByRole('textbox', { name: 'Creator-ready subscription terms to copy manually' })
+  await expect(fallback).toBeVisible()
+  await expect(fallback).toBeFocused()
+  await expect(fallback).toHaveValue(/Current capacity: 0\.09 FTestXRP \(9 fixed-price cycles\)/)
+  const selection = await fallback.evaluate((element) => {
+    const textarea = element as HTMLTextAreaElement
+    return [textarea.selectionStart, textarea.selectionEnd, textarea.value.length]
+  })
+  expect(selection).toEqual([0, selection[2], selection[2]])
 })
 
 test('fixed-price checkout displays the exact initial charge ceiling', async ({ page }) => {
