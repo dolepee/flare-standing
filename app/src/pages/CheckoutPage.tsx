@@ -12,7 +12,7 @@ import { useWallet } from '../context/WalletContext'
 import { publicClient } from '../lib/chain'
 import { selectInitialChargeCeiling } from '../lib/checkout'
 import { errorMessage, formatFxrp, formatPeriod, formatUsdMicro, parseFxrp, runUiAction, shortAddress } from '../lib/format'
-import { getPlanProfile } from '../lib/planCatalog'
+import { getPlanProfile, isHistoricalReplayPlan } from '../lib/planCatalog'
 
 export function CheckoutPage() {
   const { planId } = useParams()
@@ -118,7 +118,7 @@ export function CheckoutPage() {
     return (
       <div className="page checkout-page">
         <Link className="back-link" to="/plans"><ArrowLeft size={15} aria-hidden="true" /> Testnet checkouts</Link>
-        <InactivePlanNotice planId={plan.id} planName={profile.name} />
+        <InactivePlanNotice planId={plan.id} planName={profile.name} historicalProof={isHistoricalReplayPlan(plan)} />
       </div>
     )
   }

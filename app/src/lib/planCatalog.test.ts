@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { StandingPlan } from '../contracts'
-import { getPlanProfile } from './planCatalog'
+import { getPlanProfile, isHistoricalReplayPlan } from './planCatalog'
 
 const catalogedPlan: StandingPlan = {
   id: 1n,
@@ -32,5 +32,11 @@ describe('getPlanProfile', () => {
     expect(getPlanProfile(durablePlan).name).toBe('XRP Subscription Launch Brief')
     expect(getPlanProfile({ ...durablePlan, merchant: catalogedPlan.merchant }).name)
       .toBe('Onchain recurring plan')
+  })
+
+  it('recognizes only the exact fast-cadence historical fixture', () => {
+    expect(isHistoricalReplayPlan(catalogedPlan)).toBe(true)
+    expect(isHistoricalReplayPlan({ ...catalogedPlan, id: 2n })).toBe(false)
+    expect(isHistoricalReplayPlan({ ...catalogedPlan, merchant: '0x1111111111111111111111111111111111111111' })).toBe(false)
   })
 })

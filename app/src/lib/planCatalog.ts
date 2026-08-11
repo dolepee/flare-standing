@@ -65,3 +65,7 @@ export function getPlanProfile(plan?: StandingPlan): PlanProfile {
   const { merchant: _merchant, ...profile } = entry
   return profile
 }
+
+export function isHistoricalReplayPlan(plan?: StandingPlan): boolean {
+  return Boolean(plan && plan.id === 1n && isSameAddress(plan.merchant, REFERENCE_MERCHANT))
+}

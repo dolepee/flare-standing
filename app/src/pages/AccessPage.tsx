@@ -6,7 +6,7 @@ import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
 import { entitlementState } from '../lib/entitlement'
 import { formatTime, isSameAddress, runUiAction, shortAddress } from '../lib/format'
-import { getPlanProfile } from '../lib/planCatalog'
+import { getPlanProfile, isHistoricalReplayPlan } from '../lib/planCatalog'
 
 const stateCopy = {
   active: { label: 'Access active', tone: 'good' as const, title: 'Membership verified', detail: 'The latest scheduled charge is inside its paid access window.', icon: CheckCircle2 },
@@ -21,6 +21,14 @@ const pausedHistoricalCopy = {
   title: 'This historical access pass is retired.',
   detail: 'Its completed open and renewal receipts remain verifiable, but the plan no longer accepts charges. Use the durable live demo for the current paid result.',
   icon: ReceiptText,
+}
+
+const pausedPlanCopy = {
+  label: 'Plan paused',
+  tone: 'warning' as const,
+  title: 'This plan is not accepting charges.',
+  detail: 'The merchant paused this plan onchain. No charge can resume access unless the merchant reactivates it.',
+  icon: LockKeyhole,
 }
 
 export function AccessPage() {
@@ -109,8 +117,9 @@ export function AccessPage() {
 
   const chainNow = nowSeconds > state.chainTimestamp ? nowSeconds : state.chainTimestamp
   const entitlement = entitlementState(mandate, plan.periodSeconds, chainNow)
-  const historicalPlanPaused = !plan.active && entitlement !== 'active' && entitlement !== 'canceled'
-  const copy = historicalPlanPaused ? pausedHistoricalCopy : stateCopy[entitlement]
+  const inactiveUnpaidPlan = !plan.active && entitlement !== 'active' && entitlement !== 'canceled'
+  const historicalPlanPaused = inactiveUnpaidPlan && isHistoricalReplayPlan(plan)
+  const copy = historicalPlanPaused ? pausedHistoricalCopy : inactiveUnpaidPlan ? pausedPlanCopy : stateCopy[entitlement]
   const Icon = copy.icon
   const ownsMandate = isSameAddress(account, mandate.subscriber)
   const unlocked = entitlement === 'active' && ownsMandate
@@ -141,7 +150,8 @@ export function AccessPage() {
             <p>{ownsMandate || !connected ? copy.detail : 'Connect the subscriber wallet to open this paid edition.'}</p>
           )}
           {historicalPlanPaused ? <Link className="button button-primary" to="/demo">Open durable live demo</Link> : null}
-          {!connected && !historicalPlanPaused ? <button className="button button-primary" type="button" onClick={() => runUiAction(connect())}>Connect subscriber wallet</button> : null}
+          {inactiveUnpaidPlan && !historicalPlanPaused ? <Link className="button button-primary" to="/plans">View active plans</Link> : null}
+          {!connected && !inactiveUnpaidPlan ? <button className="button button-primary" type="button" onClick={() => runUiAction(connect())}>Connect subscriber wallet</button> : null}
         </div>
         <aside className="entitlement-receipt">
           <div className="section-title"><div><span className="eyebrow">Coston2 testnet receipt</span><h2>Mandate #{mandate.id.toString()}</h2></div><ReceiptText aria-hidden="true" /></div>
