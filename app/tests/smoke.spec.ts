@@ -389,6 +389,43 @@ test('wrapped unknown-chain wallet errors add Coston2 before retrying', async ({
   expect(calls.at(-1)).toBe('eth_chainId')
 })
 
+test('chain identifiers before unknown-chain status still trigger Coston2 setup', async ({ page }) => {
+  await page.addInitScript(() => {
+    const account = '0x1111111111111111111111111111111111111111'
+    let activeChain = '0x1'
+    let switchCalls = 0
+    const calls: string[] = []
+    ;(window as unknown as { walletCalls: string[] }).walletCalls = calls
+    window.ethereum = {
+      request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+        calls.push(method)
+        if (method === 'eth_accounts') return [account]
+        if (method === 'eth_chainId') return activeChain
+        if (method === 'wallet_addEthereumChain') return null
+        if (method === 'wallet_switchEthereumChain') {
+          switchCalls += 1
+          if (switchCalls === 1) throw { code: -32603, message: 'Chain ID 0x72 is not added' }
+          const chainParameter = params?.[0] as { chainId?: string } | undefined
+          if (!chainParameter?.chainId) throw new Error('Missing chain ID')
+          activeChain = chainParameter.chainId
+          return null
+        }
+        throw new Error(`Unexpected wallet method: ${method}`)
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    }
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Switch to Coston2' }).click()
+  await expect(page.getByRole('button', { name: /0x1111.*1111/ })).toBeVisible()
+  const calls = await page.evaluate(() => (window as unknown as { walletCalls: string[] }).walletCalls)
+  expect(calls.filter((method) => method === 'wallet_switchEthereumChain')).toHaveLength(2)
+  expect(calls).toContain('wallet_addEthereumChain')
+  expect(calls.at(-1)).toBe('eth_chainId')
+})
+
 test('network-switch failures preserve wallet detail and explain recovery', async ({ page }) => {
   await page.addInitScript(() => {
     const account = '0x1111111111111111111111111111111111111111'

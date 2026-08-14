@@ -71,7 +71,7 @@ function isUnknownChainError(error: unknown, depth = 0): boolean {
     .find((value): value is string => typeof value === 'string')
   if (detail && (
     /(?:unrecognized|unknown|unsupported|not added|does not exist)\s+(?:chain|network)(?:\s+id)?/i.test(detail)
-    || /(?:chain|network)(?:\s+id)?\s+(?:is\s+)?(?:unrecognized|unknown|unsupported|not added|does not exist)/i.test(detail)
+    || /(?:chain|network)(?:\s+id)?(?:\s+(?:0x[0-9a-f]+|\d+))?\s+(?:is\s+)?(?:unrecognized|unknown|unsupported|not added|does not exist)/i.test(detail)
   )) {
     return true
   }
