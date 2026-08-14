@@ -136,18 +136,20 @@ due date, nor does it establish an
 uptime SLA or exact scheduler cadence.
 
 `script/standing-keeper.sh` remains the read-only-by-default local operator
-entry point:
+entry point. It accepts explicit comma-separated mandate IDs or bounded discovery
+of every current mandate, refuses silent truncation, and falls back to Flare's
+second published Coston2 RPC when the primary endpoint is unavailable:
 
 Read-only scan, which requires no key:
 
 ```bash
-KEEPER_MANDATE_IDS=2 script/standing-keeper.sh --once
+KEEPER_MANDATE_IDS=all script/standing-keeper.sh --once
 ```
 
-An explicit local live run requires `RUN_LIVE=1`, `KEEPER_MANDATE_IDS=2`, and a
-dedicated `KEEPER_PRIVATE_KEY`. The judge-window shell path refuses any other
-mandate ID. `--loop` uses a process lock to prevent duplicate local
-workers. GitHub Actions scheduling is best-effort; observed runs may be delayed,
+An explicit local live run requires `RUN_LIVE=1`, a reviewed mandate selection,
+and a dedicated `KEEPER_PRIVATE_KEY`. `--loop` uses a process lock to prevent
+duplicate local workers. A discovery set above the configured safety limit fails
+closed instead of silently dropping mandates. GitHub Actions scheduling is best-effort; observed runs may be delayed,
 so the 10-minute plan is a fast replay fixture rather than a durable availability
 claim.
 
@@ -284,6 +286,8 @@ end-to-end browser UX claim.
   coverage.
 - `docs/SECURITY_NOTES.md`: internal hardening notes and residual trust
   boundaries.
+- `docs/V3_MAINNET_GATE.md`: complete contract, operations, audit, and migration
+  gate for the deliberately separate post-hackathon release.
 
 ## Security boundaries
 

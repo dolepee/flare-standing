@@ -260,6 +260,65 @@ contract StandingTest is Test {
         assertGt(state.lastChargeAt, 0);
     }
 
+    function test_MissedCyclesExecuteOnlyOnceAndRestartCadenceFromExecution() public {
+        uint256 planId = _createFixedPlan(CHARGE_USEC);
+        token.approve(address(standing), CHARGE_USEC * 3);
+        standing.openMandate(planId, CHARGE_USEC * 3);
+
+        uint256 lateExecution = standing.mandate(1).nextChargeAt + 600;
+        vm.warp(lateExecution);
+        standing.charge(1);
+
+        StandingMandates.Mandate memory state = standing.mandate(1);
+        assertEq(state.remaining, CHARGE_USEC * 2);
+        assertEq(state.lastChargeAt, lateExecution);
+        assertEq(state.nextChargeAt, lateExecution + 60);
+
+        vm.expectRevert(StandingMandates.NotReady.selector);
+        standing.charge(1);
+    }
+
+    function test_PausedPolicyAllowsPlanListingButBlocksNewFunds() public {
+        standing.setPaused(true);
+
+        vm.prank(MERCHANT);
+        uint256 planId = standing.createPlan(0, CHARGE_USEC, 60, MERCHANT);
+        assertTrue(standing.plan(planId).active);
+
+        token.approve(address(standing), CHARGE_USEC);
+        vm.expectRevert(StandingMandates.NotActive.selector);
+        standing.openMandate(planId, CHARGE_USEC);
+    }
+
+    function test_MultipleSubscribersAndPlansRemainAccountingIsolated() public {
+        address secondMerchant = address(0x4444);
+        address subscriberA = address(0xA11CE);
+        address subscriberB = address(0xB0B);
+        uint256 planA = _createFixedPlan(CHARGE_USEC);
+        vm.prank(secondMerchant);
+        uint256 planB = standing.createPlan(0, 2 * CHARGE_USEC, 120, secondMerchant);
+
+        token.mint(subscriberA, 3 * CHARGE_USEC);
+        token.mint(subscriberB, 4 * CHARGE_USEC);
+        vm.startPrank(subscriberA);
+        token.approve(address(standing), 3 * CHARGE_USEC);
+        standing.openMandateAndCharge(planA, 3 * CHARGE_USEC, CHARGE_USEC);
+        vm.stopPrank();
+        vm.startPrank(subscriberB);
+        token.approve(address(standing), 4 * CHARGE_USEC);
+        standing.openMandateAndCharge(planB, 4 * CHARGE_USEC, 2 * CHARGE_USEC);
+        vm.stopPrank();
+
+        assertEq(standing.mandate(1).subscriber, subscriberA);
+        assertEq(standing.mandate(1).remaining, 2 * CHARGE_USEC);
+        assertEq(standing.mandate(2).subscriber, subscriberB);
+        assertEq(standing.mandate(2).remaining, 2 * CHARGE_USEC);
+        assertEq(standing.merchantBalance(MERCHANT), 990_000);
+        assertEq(standing.merchantBalance(secondMerchant), 1_980_000);
+        assertEq(standing.protocolFeeBalance(TREASURY), 30_000);
+        assertEq(standing.contractBalance(), 7 * CHARGE_USEC);
+    }
+
     function test_SetPausedPreventsOpenAndCharge() public {
         uint256 planId = _createFixedPlan(CHARGE_USEC);
         standing.setPaused(true);
