@@ -1,14 +1,28 @@
 # Standing
 
-Standing turns one XRPL payment into an immediately charged recurring mandate
-on Flare. The same verified Coston2 execution mints FXRP-compatible FTestXRP,
-opens the bounded subscription, and delivers the first paid period; later permissionless keeper
-charges need neither the subscriber key nor merchant custody. The subscriber
-can cancel onchain and recover every unused unit without asking the merchant.
+Standing turns XRP into a cancellable recurring payment mandate on Flare. The
+first period is paid immediately, later charges are permissionless, and the
+subscriber can recover every unused unit without asking the merchant. The
+validated cross-chain path performs the FTestXRP mint, bounded mandate opening,
+and first charge in one Coston2 execution.
 
 [Live Coston2 app](https://standing.dolepee.com) ·
 [Evidence](https://standing.dolepee.com/evidence) ·
 [Deployed V2 contract](https://coston2-explorer.flare.network/address/0xE8D1ec33dBE87590eB7bE2911451E22F3981B7F7)
+
+## Live browser proof
+
+On 14 August 2026, the public checkout completed from a connected participant
+wallet with no CLI assistance: it added Coston2, approved `0.03 FTestXRP`, and
+atomically opened and charged V2 mandate `#3` for plan `#2`.
+
+- [Exact token approval](https://coston2-explorer.flare.network/tx/0x68a7430342311fb38227143f8eb8a62c284147301a45f90aed3e809721c6f568)
+- [Atomic mandate open and first charge](https://coston2-explorer.flare.network/tx/0x4edc8a5e6998a7e2983b80fae99ba2fd62031370710a469231ce368513a5f84e)
+- Result: `0.01 FTestXRP` paid, `0.02 FTestXRP` retained as bounded capacity,
+  next charge scheduled for 28 August 2026, and zero residual token allowance.
+
+This is an owner-operated Coston2 browser validation, not external adoption,
+mainnet usage, or production revenue.
 
 ## Why Flare is load-bearing
 
