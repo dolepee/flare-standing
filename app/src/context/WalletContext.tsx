@@ -69,7 +69,10 @@ function isUnknownChainError(error: unknown, depth = 0): boolean {
 
   const detail = [candidate.message, candidate.shortMessage]
     .find((value): value is string => typeof value === 'string')
-  if (detail && /(?:unrecognized|unknown|not added|does not exist).*chain|chain.*(?:unrecognized|unknown|not added|does not exist)/i.test(detail)) {
+  if (detail && (
+    /(?:unrecognized|unknown|unsupported|not added|does not exist)\s+(?:chain|network)(?:\s+id)?/i.test(detail)
+    || /(?:chain|network)(?:\s+id)?\s+(?:is\s+)?(?:unrecognized|unknown|unsupported|not added|does not exist)/i.test(detail)
+  )) {
     return true
   }
 
