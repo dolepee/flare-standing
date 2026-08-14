@@ -64,7 +64,7 @@ function hasUnknownChainStatus(detail: string) {
     const identifier = String.raw`(?:\s+(?:0x[0-9a-f]+|\d+))?`
     const status = String.raw`(?:unknown|unrecognized|unsupported|not\s+added|does\s+not\s+exist)`
 
-    return new RegExp(String.raw`\b(?:unknown|unrecognized|unsupported)\s+${chainPhrase}${identifier}\b`, 'u').test(normalized)
+    return new RegExp(String.raw`\b(?:unknown|unrecognized|unsupported)\s+${chainPhrase}${identifier}$`, 'u').test(normalized)
       || new RegExp(String.raw`\b${chainPhrase}${identifier}\s+(?:is\s+)?${status}\b`, 'u').test(normalized)
   })
 }

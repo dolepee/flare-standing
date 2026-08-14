@@ -508,6 +508,33 @@ test('generic unknown switch errors do not trigger an add-chain prompt', async (
   expect(calls).not.toContain('wallet_addEthereumChain')
 })
 
+test('unsupported chain-switching operations do not trigger an add-chain prompt', async ({ page }) => {
+  await page.addInitScript(() => {
+    const account = '0x1111111111111111111111111111111111111111'
+    const calls: string[] = []
+    ;(window as unknown as { walletCalls: string[] }).walletCalls = calls
+    window.ethereum = {
+      request: async ({ method }: { method: string }) => {
+        calls.push(method)
+        if (method === 'eth_accounts') return [account]
+        if (method === 'eth_chainId') return '0x1'
+        if (method === 'wallet_switchEthereumChain') {
+          throw { code: -32603, message: 'Unsupported chain switching operation' }
+        }
+        throw new Error(`Unexpected wallet method: ${method}`)
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    }
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Switch to Coston2' }).click()
+  await expect(page.getByText('Transaction stopped')).toBeVisible()
+  const calls = await page.evaluate(() => (window as unknown as { walletCalls: string[] }).walletCalls)
+  expect(calls).not.toContain('wallet_addEthereumChain')
+})
+
 for (const wrappedMessage of [
   'Unable to switch network. Chain ID 0x72 is not added',
   'Could not switch network because Chain ID 0x72 is not added',
