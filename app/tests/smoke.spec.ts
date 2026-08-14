@@ -538,6 +538,7 @@ test('unsupported chain-switching operations do not trigger an add-chain prompt'
 for (const wrappedMessage of [
   'Unable to switch network. Chain ID 0x72 is not added',
   'Could not switch network because Chain ID 0x72 is not added',
+  'Unrecognized chain ID 0x72: please add the chain',
 ]) {
   test(`explicit unknown-chain status is recognized: ${wrappedMessage}`, async ({ page }) => {
     await page.addInitScript((message) => {
