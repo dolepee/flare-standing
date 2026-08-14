@@ -368,6 +368,32 @@ failed without state changes because the Coston2 token proxy exhausted an
 under-estimated gas limit. The successful retry used an explicit `500,000`
 gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`).
 
+### Public V2 browser checkout validation
+
+On 2026-08-14, the deployed public checkout completed from the participant's
+connected EVM wallet without CLI assistance:
+
+- subscriber: `0xbad35FA6e368e90fC4faf63507F2D0A2Fdf94BAF`
+- FTestXRP approval:
+  `0x68a7430342311fb38227143f8eb8a62c284147301a45f90aed3e809721c6f568`
+  - receipt status: success
+  - block: `34,066,013`
+- atomic open and first charge:
+  `0x4edc8a5e6998a7e2983b80fae99ba2fd62031370710a469231ce368513a5f84e`
+  - receipt status: success
+  - block: `34,066,017`
+  - mandate: `3`, plan: `2`
+  - deposited: `30,000` atomic / `0.03 FTestXRP`
+  - first charge: `10,000` atomic / `0.01 FTestXRP`
+  - remaining capacity: `20,000` atomic / `0.02 FTestXRP`
+  - last charge: `2026-08-14T19:57:41Z`
+  - next charge: `2026-08-28T19:57:41Z`
+  - canceled: false
+  - residual FTestXRP allowance to Standing: zero
+
+This closes the owner-operated V2 browser-path validation. It is not an
+unrelated-user pilot, external adoption, mainnet usage, or production revenue.
+
 ### Gate status
 
 - The reviewed V2 deployment is live. A fresh XRPL authorization completed the
