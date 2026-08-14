@@ -216,7 +216,7 @@ export function CheckoutPage() {
             <button className="button button-primary checkout-submit" type="button" onClick={() => runUiAction(switchToCoston2())}>Switch to Coston2</button>
           ) : (
             <button className="button button-primary checkout-submit" type="button" disabled={!plan.active || amount <= 0n || !account || insufficientBalance || invalidInitialCharge} onClick={() => runUiAction(subscribe())}>
-              Approve, open and charge
+              Approve token, then open + pay first cycle
             </button>
           )}
           <small id="checkout-help-text" aria-live="polite">{checkoutHelp}</small>

@@ -168,7 +168,7 @@ test('retired fast plan remains verifiable without exposing a wallet or charge p
   await expect(page.getByRole('heading', { name: 'Fast-Cadence XRP Proof is paused.' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Open the durable live demo/ })).toHaveAttribute('href', '/demo')
   await expect(page.getByRole('link', { name: 'Verify historical receipts' })).toHaveAttribute('href', '/evidence')
-  await expect(page.locator('main').getByRole('button', { name: /Connect wallet|Approve, open and charge|Switch to Coston2/i })).toHaveCount(0)
+  await expect(page.locator('main').getByRole('button', { name: /Connect wallet|Approve token, then open \+ pay first cycle|Switch to Coston2/i })).toHaveCount(0)
 
   await page.goto('/mandates')
   await page.getByRole('button', { name: 'All activity' }).click()

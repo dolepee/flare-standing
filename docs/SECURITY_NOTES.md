@@ -93,3 +93,34 @@ checkout contract. No proxy or upgrade path exists.
 - The app, atomic tool, and hosted-keeper package audits each report zero known
   vulnerabilities on the 2026-08-11 candidate tree.
 - This is internal project hardening, not an independent external audit.
+
+## Known testnet limitations before mainnet
+
+These are explicit release boundaries, not properties hidden behind the V2
+compatibility identifier or the deployment reproduction proof:
+
+- USD-priced mandates bound the first charge and total prepaid capacity, but do
+  not store a separate subscriber ceiling for each later FTSO-priced charge.
+- Plan price, cadence, merchant, and activation state are onchain; rich product
+  metadata is a curated client mapping rather than an onchain hash or signed
+  merchant manifest.
+- The deployed owner and treasury are single testnet EOAs, and ownership transfer
+  is one-step. A production release needs multisig custody and two-step transfer.
+- Merchant deactivation does not refund an already-paid service period, and
+  delayed charges schedule the next period from actual execution time rather
+  than preserving a calendar anchor.
+- The browser and hosted keeper currently use one Coston2 RPC endpoint. A
+  production client needs independently operated providers, health checks, and
+  fail-closed comparison for sensitive reads.
+- `createPlan` remains available while mandate fund operations are paused; V2's
+  pause semantics stop new mandate exposure, top-ups, and charges rather than
+  listing creation.
+- Accidental direct token transfers above recorded liabilities cannot be swept.
+  Adding recovery requires an explicit liability accumulator and multisig/
+  timelocked excess-only withdrawal in a future deployment.
+- Constructor-time deployment checks are operational rather than onchain: the
+  release script and CI verify contract code, token decimals, adapter identity,
+  constructor input, runtime bytecode, and explorer source after deployment.
+- The current invariant suite proves global custody and deposit bounds with a
+  narrow actor/token model. Multi-actor, multi-plan, variable-oracle, pause,
+  deactivation, and adversarial-token stateful campaigns remain mainnet work.

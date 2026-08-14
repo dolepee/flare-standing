@@ -28,9 +28,9 @@ disappear.
 
 The public app exposes these operating and evidence surfaces:
 
-- `/demo` presents a public UI-gated demonstration brief mapped to an exact
+- `/demo` presents a public UI-gated treasury incident runbook mapped to an exact
   paid V2 mandate without requiring a wallet, faucet, or transaction. The
-  brief is not private content or a cryptographic content commitment.
+  runbook is not private content or a cryptographic content commitment.
 - `/plans` discovers live merchant plans.
 - `/checkout/:planId` opens and charges a bounded prepaid V2 mandate in the
   same Coston2 transaction after the buyer reviews the exact first-charge cap.
@@ -44,6 +44,17 @@ Curated catalog profiles remain controlled Coston2 fixtures. Curated names are
 accepted only when the cataloged merchant address matches the plan's onchain
 merchant; every other plan, including the external pilot plan, falls back to
 neutral onchain labeling.
+
+## Built during Flare Summer Signal
+
+The hackathon build moved from a validated V1 state machine to the current V2
+product and evidence surface. Work completed during the program includes the
+immediate open-and-first-charge path, exact cancel-and-withdraw protection,
+resumable XRPL/FDC settlement tooling, the bounded keeper, the public browser
+journey, a durable judging mandate, explorer source verification, and an
+automated byte-for-byte deployment reproduction check. Historical V1 receipts
+remain visible only as prior lifecycle evidence and bounded subscriber recovery;
+new checkout actions use V2.
 
 ## Protocol flow
 
