@@ -48,8 +48,8 @@ describe('RouteMetadata', () => {
     expect(headValue('meta[property="og:url"]', 'content')).toBe('https://standing.dolepee.com/')
 
     fireEvent.click(view.getByRole('button', { name: 'Demo' }))
-    await waitFor(() => expect(document.title).toBe('Wallet-Free XRP Subscription Demo | Standing'))
-    expect(headValue('meta[name="description"]', 'content')).toBe('Inspect the useful subscriber brief unlocked by one verified XRP payment and its bounded recurring mandate on Flare Coston2.')
+    await waitFor(() => expect(document.title).toBe('XRP Treasury Runbook Demo | Standing'))
+    expect(headValue('meta[name="description"]', 'content')).toBe('Inspect the useful treasury incident runbook unlocked by one verified XRP payment and its bounded recurring mandate on Flare Coston2.')
     expect(headValue('meta[property="og:title"]', 'content')).toBe(document.title)
     expect(headValue('meta[property="og:description"]', 'content')).toBe(headValue('meta[name="description"]', 'content'))
     expect(headValue('link[rel="canonical"]', 'href')).toBe('https://standing.dolepee.com/demo')

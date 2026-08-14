@@ -3,9 +3,9 @@ import { expect, test } from '@playwright/test'
 test('stable routes publish one matching canonical and Open Graph URL', async ({ page }) => {
   const expected = [
     ['/', 'Standing | Pay in XRP, land subscribed on Flare', 'https://standing.dolepee.com/'],
-    ['/demo', 'Wallet-Free XRP Subscription Demo | Standing', 'https://standing.dolepee.com/demo'],
+    ['/demo', 'XRP Treasury Runbook Demo | Standing', 'https://standing.dolepee.com/demo'],
     ['/evidence', 'Verified XRP-to-Flare Receipts | Standing', 'https://standing.dolepee.com/evidence'],
-    ['/Demo', 'Wallet-Free XRP Subscription Demo | Standing', 'https://standing.dolepee.com/demo'],
+    ['/Demo', 'XRP Treasury Runbook Demo | Standing', 'https://standing.dolepee.com/demo'],
     ['/EVIDENCE', 'Verified XRP-to-Flare Receipts | Standing', 'https://standing.dolepee.com/evidence'],
   ] as const
 
@@ -49,13 +49,15 @@ for (const path of ['/', '/demo', '/plans', '/checkout/1', '/mandates', '/access
 
 test('named checkout resolves against the live onchain plan', async ({ page }) => {
   await page.goto('/checkout/2')
-  await expect(page.getByRole('heading', { name: 'XRP Subscription Launch Brief' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'XRP Creator Treasury Runbook' })).toBeVisible()
   await expect(page.getByText('Controlled fixture')).toBeVisible()
   await expect(page.getByText('V2 live')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Prepare Coston2 before checkout' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Open official faucet/ })).toHaveAttribute('href', 'https://faucet.flare.network/')
   await expect(page.getByText('Exact initial-charge ceiling')).toBeVisible()
   await expect(page.getByRole('complementary').getByText('0.01 FTestXRP').first()).toBeVisible()
+  await expect(page.getByLabel('Prepaid capacity')).toHaveValue('0.03')
+  await expect(page.getByText('Maximum approved exposure', { exact: true })).toBeVisible()
   await expect(page.getByRole('complementary').getByRole('button', { name: 'Connect wallet' })).toBeVisible()
 })
 
@@ -78,9 +80,9 @@ test('first fold leads with the immediately useful XRP-funded subscription', asy
 
 test('wallet-free demo returns the live paid artifact from the exact durable mandate', async ({ page }) => {
   await page.goto('/demo')
-  await expect(page.getByRole('heading', { name: 'An XRP payment unlocked this subscriber brief.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'An XRP payment unlocked a treasury incident runbook.' })).toBeVisible()
   await expect(page.getByText('Access paid')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'A launch-ready policy for bounded recurring access.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Contain a payment incident without losing the evidence.' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Mandate #2 now' })).toBeVisible()
   await expect(page.getByText('0.09 of 0.1 FTestXRP')).toBeVisible()
   await expect(page.getByText('9 cycles at current fixed price')).toBeVisible()
@@ -88,18 +90,18 @@ test('wallet-free demo returns the live paid artifact from the exact durable man
   await expect(page.getByText('0.1 deposited · 0.1 subscriber-owned')).toBeVisible()
   await expect(page.getByText('0.1 testnet mint fee')).toBeVisible()
   await expect(page.getByText('0.01 first cycle paid')).toBeVisible()
-  await expect(page.getByText('Creator-ready terms')).toBeVisible()
-  await expect(page.getByText('0.01 FTestXRP every 14 days · 0.1 FTestXRP cap')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Copy exact terms' })).toBeVisible()
+  await expect(page.getByText('Ready-to-use response pack')).toBeVisible()
+  await expect(page.getByText('Contain · preserve · communicate · recover')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy runbook' })).toBeVisible()
   await expect(page.getByText('Snapshot block')).toBeVisible()
   await expect(page.getByRole('link', { name: /Inspect XRP payment/ })).toHaveAttribute('href', /670CB8D1C19E562EF8BF73D006672E2AC56FAF0D29560F025FED68DF315B0595$/)
-  await expect(page.getByRole('link', { name: /Inspect atomic activation/ })).toHaveAttribute('href', /0x4bef577198ef681b4778ce2f023676ee7678a78432b2928f75271815f5ca9de5$/)
+  await expect(page.getByRole('link', { name: /Inspect Coston2 activation/ })).toHaveAttribute('href', /0x4bef577198ef681b4778ce2f023676ee7678a78432b2928f75271815f5ca9de5$/)
   await expect(page.getByRole('button', { name: /Connect wallet/ })).toHaveCount(0)
   await expect(page.getByText('No wallet needed', { exact: true })).toBeVisible()
   await expect(page.locator('main').getByRole('button', { name: /Switch|Approve|Open|Charge|Cancel|Withdraw/i })).toHaveCount(0)
 })
 
-test('creator-ready live terms can be copied with the keyboard', async ({ page }) => {
+test('treasury incident runbook can be copied with the keyboard', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -111,16 +113,16 @@ test('creator-ready live terms can be copied with the keyboard', async ({ page }
     })
   })
   await page.goto('/demo')
-  const copyButton = page.getByRole('button', { name: 'Copy exact terms' })
+  const copyButton = page.getByRole('button', { name: 'Copy runbook' })
   await copyButton.focus()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('button', { name: 'Terms copied' })).toBeVisible()
-  await expect(page.getByRole('status')).toHaveText('Creator-ready terms copied to the clipboard.')
+  await expect(page.getByRole('button', { name: 'Runbook copied' })).toBeVisible()
+  await expect(page.getByRole('status')).toHaveText('Treasury incident runbook copied to the clipboard.')
   const copiedTerms = await page.evaluate(() => (window as typeof window & { copiedCreatorTerms?: string }).copiedCreatorTerms)
-  expect(copiedTerms).toContain('Price: 0.01 FTestXRP every 14 days')
-  expect(copiedTerms).toContain('Prepaid cap: 0.1 FTestXRP')
-  expect(copiedTerms).toContain('Exit: The subscriber may cancel without merchant permission')
-  expect(copiedTerms).toContain('Production requirement: Authenticate subscriber ownership')
+  expect(copiedTerms).toContain('XRP CREATOR TREASURY INCIDENT RUNBOOK')
+  expect(copiedTerms).toContain('Stop publishing payment links')
+  expect(copiedTerms).toContain('Never request a seed phrase')
+  expect(copiedTerms).toContain('Reconcile expected liabilities')
 })
 
 test('blocked clipboard access exposes an accessible selected manual-copy fallback', async ({ page }) => {
@@ -133,12 +135,12 @@ test('blocked clipboard access exposes an accessible selected manual-copy fallba
     })
   })
   await page.goto('/demo')
-  await page.getByRole('button', { name: 'Copy exact terms' }).click()
+  await page.getByRole('button', { name: 'Copy runbook' }).click()
   await expect(page.getByRole('status')).toContainText('Automatic copy was blocked')
-  const fallback = page.getByRole('textbox', { name: 'Creator-ready subscription terms to copy manually' })
+  const fallback = page.getByRole('textbox', { name: 'Treasury incident runbook to copy manually' })
   await expect(fallback).toBeVisible()
   await expect(fallback).toBeFocused()
-  await expect(fallback).toHaveValue(/Current capacity: 0\.09 FTestXRP \(9 fixed-price cycles\)/)
+  await expect(fallback).toHaveValue(/XRP CREATOR TREASURY INCIDENT RUNBOOK/)
   const selection = await fallback.evaluate((element) => {
     const textarea = element as HTMLTextAreaElement
     return [textarea.selectionStart, textarea.selectionEnd, textarea.value.length]
@@ -166,7 +168,7 @@ test('retired fast plan remains verifiable without exposing a wallet or charge p
   await expect(page.getByRole('heading', { name: 'Fast-Cadence XRP Proof is paused.' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Open the durable live demo/ })).toHaveAttribute('href', '/demo')
   await expect(page.getByRole('link', { name: 'Verify historical receipts' })).toHaveAttribute('href', '/evidence')
-  await expect(page.locator('main').getByRole('button', { name: /Connect wallet|Approve, open and charge|Switch to Coston2/i })).toHaveCount(0)
+  await expect(page.locator('main').getByRole('button', { name: /Connect wallet|Approve token, then open \+ pay first cycle|Switch to Coston2/i })).toHaveCount(0)
 
   await page.goto('/mandates')
   await page.getByRole('button', { name: 'All activity' }).click()
@@ -256,10 +258,10 @@ test.describe('mobile navigation', () => {
     await expect(page.getByRole('link', { name: /Open live subscriber demo/ })).toBeInViewport()
 
     await page.goto('/demo')
-    await expect(page.getByRole('heading', { name: 'An XRP payment unlocked this subscriber brief.' })).toBeInViewport()
+    await expect(page.getByRole('heading', { name: 'An XRP payment unlocked a treasury incident runbook.' })).toBeInViewport()
     await expect(page.getByText('Access paid')).toBeInViewport()
-    await expect(page.getByText('XRP SUBSCRIPTION LAUNCH BRIEF')).toBeInViewport()
-    await expect(page.getByRole('heading', { name: 'A launch-ready policy for bounded recurring access.' })).toBeInViewport()
+    await expect(page.getByText('XRP CREATOR TREASURY RUNBOOK')).toBeInViewport()
+    await expect(page.getByRole('heading', { name: 'Contain a payment incident without losing the evidence.' })).toBeInViewport()
   })
 })
 

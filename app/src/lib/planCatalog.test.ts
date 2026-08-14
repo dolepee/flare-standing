@@ -29,7 +29,7 @@ describe('getPlanProfile', () => {
       periodSeconds: 1_209_600,
       active: true,
     }
-    expect(getPlanProfile(durablePlan).name).toBe('XRP Subscription Launch Brief')
+    expect(getPlanProfile(durablePlan).name).toBe('XRP Creator Treasury Runbook')
     expect(getPlanProfile({ ...durablePlan, merchant: catalogedPlan.merchant }).name)
       .toBe('Onchain recurring plan')
   })

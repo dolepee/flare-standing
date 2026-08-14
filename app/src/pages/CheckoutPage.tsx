@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, ShieldCheck, WalletCards } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { decodeEventLog } from 'viem'
 import { Coston2Setup } from '../components/Coston2Setup'
@@ -10,7 +10,7 @@ import { erc20Abi, standingAbi } from '../contracts'
 import { useProtocol } from '../context/ProtocolContext'
 import { useWallet } from '../context/WalletContext'
 import { publicClient } from '../lib/chain'
-import { selectInitialChargeCeiling } from '../lib/checkout'
+import { selectInitialChargeCeiling, suggestedPrepaidCapacity } from '../lib/checkout'
 import { errorMessage, formatFxrp, formatPeriod, formatUsdMicro, parseFxrp, runUiAction, shortAddress } from '../lib/format'
 import { getPlanProfile, isHistoricalReplayPlan } from '../lib/planCatalog'
 
@@ -19,10 +19,14 @@ export function CheckoutPage() {
   const navigate = useNavigate()
   const { account, connected, correctChain, connect, switchToCoston2, execute } = useWallet()
   const { state, loading, initialized, error, refresh } = useProtocol()
-  const [deposit, setDeposit] = useState('3')
+  const [deposit, setDeposit] = useState('0.1')
+  const [depositEdited, setDepositEdited] = useState(false)
   const [reviewedMaxInitialCharge, setReviewedMaxInitialCharge] = useState('')
   const plan = state.plans.find((candidate) => candidate.id.toString() === planId)
   const profile = getPlanProfile(plan)
+  useEffect(() => {
+    if (plan && !depositEdited) setDeposit(formatFxrp(suggestedPrepaidCapacity(plan)))
+  }, [depositEdited, plan])
   const amount = useMemo(() => {
     try {
       return parseFxrp(deposit)
@@ -167,10 +171,19 @@ export function CheckoutPage() {
           <p>The transaction must both open the test mandate and emit its first ChargeExecuted event. Unused FTestXRP remains cancelable and recoverable.</p>
           <label htmlFor="checkout-deposit">Prepaid capacity</label>
           <div className="input-with-unit checkout-input">
-            <input id="checkout-deposit" inputMode="decimal" value={deposit} aria-invalid={invalidDeposit} aria-describedby="checkout-deposit-help checkout-help-text" onChange={(event) => setDeposit(event.target.value)} />
+            <input id="checkout-deposit" inputMode="decimal" value={deposit} aria-invalid={invalidDeposit} aria-describedby="checkout-deposit-help checkout-help-text" onChange={(event) => { setDepositEdited(true); setDeposit(event.target.value) }} />
             <span>FTestXRP</span>
           </div>
-          <small className="field-help" id="checkout-deposit-help">Must cover the first charge; the remainder stays as recurring capacity.</small>
+          {plan.priceFxrp > 0n ? (
+            <div className="checkout-presets" aria-label="Prepaid cycle presets">
+              {[1n, 3n, 10n].map((cycles) => (
+                <button key={cycles.toString()} type="button" onClick={() => { setDepositEdited(true); setDeposit(formatFxrp(suggestedPrepaidCapacity(plan, cycles))) }}>
+                  {cycles.toString()} cycle{cycles === 1n ? '' : 's'}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <small className="field-help" id="checkout-deposit-help">This is your maximum approved exposure. The first charge is bounded separately; unused capacity remains cancelable and recoverable.</small>
 
           {requiresReviewedCeiling ? (
             <div className="initial-charge-field">
@@ -180,6 +193,7 @@ export function CheckoutPage() {
                 <span>FTestXRP</span>
               </div>
               <small className="field-help" id="max-initial-charge-help">Required FTSO slippage ceiling. The live USD conversion must be at or below this reviewed amount, and the ceiling cannot exceed your deposit.</small>
+              <small className="field-help">V2 does not store a separate ceiling for later FTSO-priced charges. Your prepaid capacity is the total exposure bound; cancel before a later cycle if that model is unsuitable.</small>
             </div>
           ) : (
             <div className="fixed-initial-limit">
@@ -192,6 +206,7 @@ export function CheckoutPage() {
           <div className="checkout-facts">
             <div><span>Plan cadence</span><strong>{formatPeriod(plan.periodSeconds)}</strong></div>
             <div><span>Recurring capacity</span><strong>{fixedCycles !== undefined ? `${fixedCycles.toString()} cycle${fixedCycles === 1n ? '' : 's'} at the fixed price` : 'FTSO-priced'}</strong></div>
+            <div><span>Maximum approved exposure</span><strong>{amount > 0n ? `${formatFxrp(amount)} FTestXRP` : 'Enter an amount'}</strong></div>
             <div><span>First-charge ceiling</span><strong>{initialChargeSelection.ceiling > 0n ? `${formatFxrp(initialChargeSelection.ceiling, 6)} FTestXRP` : 'Review required'}</strong></div>
             <div><span>Current wallet</span><strong>{connected ? `${formatFxrp(state.walletBalance)} FTestXRP` : 'Not connected'}</strong></div>
           </div>
@@ -201,7 +216,7 @@ export function CheckoutPage() {
             <button className="button button-primary checkout-submit" type="button" onClick={() => runUiAction(switchToCoston2())}>Switch to Coston2</button>
           ) : (
             <button className="button button-primary checkout-submit" type="button" disabled={!plan.active || amount <= 0n || !account || insufficientBalance || invalidInitialCharge} onClick={() => runUiAction(subscribe())}>
-              Approve, open and charge
+              Approve token, then open + pay first cycle
             </button>
           )}
           <small id="checkout-help-text" aria-live="polite">{checkoutHelp}</small>

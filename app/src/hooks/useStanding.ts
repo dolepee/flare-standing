@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Address } from 'viem'
 import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import {
@@ -28,6 +28,27 @@ type ProtocolState = {
   walletAccount?: Address
 }
 
+export type StandingReadScope = {
+  planIds?: bigint[]
+  mandateIds?: bigint[]
+  catalogLimit?: number
+}
+
+const DEFAULT_CATALOG_LIMIT = 50
+
+function selectedIds(count: bigint, requested: bigint[] | undefined, limit = DEFAULT_CATALOG_LIMIT) {
+  if (requested) return [...new Set(requested)].filter((id) => id > 0n && id <= count)
+  const boundedLimit = BigInt(Math.max(0, Math.floor(limit)))
+  const first = count > boundedLimit ? count - boundedLimit + 1n : 1n
+  return count === 0n ? [] : Array.from({ length: Number(count - first + 1n) }, (_, index) => first + BigInt(index))
+}
+
+function idsFromKey(key: string) {
+  if (key === '*') return undefined
+  if (key === '') return []
+  return key.split(',').map(BigInt)
+}
+
 const emptyState: ProtocolState = {
   snapshotBlockNumber: 0n,
   chainTimestamp: 0n,
@@ -45,7 +66,11 @@ const emptyState: ProtocolState = {
   merchantBalance: 0n,
 }
 
-export function useStanding(account?: Address) {
+export function useStanding(account?: Address, scope: StandingReadScope = {}) {
+  const planIdsKey = scope.planIds?.join(',') ?? '*'
+  const mandateIdsKey = scope.mandateIds?.join(',') ?? '*'
+  const requestedPlanIds = useMemo(() => idsFromKey(planIdsKey), [planIdsKey])
+  const requestedMandateIds = useMemo(() => idsFromKey(mandateIdsKey), [mandateIdsKey])
   const [state, setState] = useState(emptyState)
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
@@ -76,10 +101,25 @@ export function useStanding(account?: Address) {
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'treasury', blockNumber }),
         ])
 
-      const planIds = Array.from({ length: Number(planCount) }, (_, index) => BigInt(index + 1))
-      const mandateIds = Array.from({ length: Number(mandateCount) }, (_, index) => BigInt(index + 1))
+      const mandateIds = selectedIds(mandateCount, requestedMandateIds, scope.catalogLimit)
+      const rawMandates = await Promise.all(
+        mandateIds.map((id) =>
+          publicClient.readContract({
+            address: STANDING_ADDRESS,
+            abi: standingAbi,
+            functionName: 'mandates',
+            args: [id],
+            blockNumber,
+          }),
+        ),
+      )
+      const mandatePlanIds = rawMandates.map((mandate) => mandate[0])
+      const planIds = selectedIds(planCount, requestedPlanIds, scope.catalogLimit)
+      for (const planId of mandatePlanIds) {
+        if (!planIds.includes(planId)) planIds.push(planId)
+      }
 
-      const [rawPlans, rawMandates, walletBalance, walletAllowance, merchantBalance] =
+      const [rawPlans, walletBalance, walletAllowance, merchantBalance] =
         await Promise.all([
           Promise.all(
             planIds.map((id) =>
@@ -87,17 +127,6 @@ export function useStanding(account?: Address) {
                 address: STANDING_ADDRESS,
                 abi: standingAbi,
                 functionName: 'plans',
-                args: [id],
-                blockNumber,
-              }),
-            ),
-          ),
-          Promise.all(
-            mandateIds.map((id) =>
-              publicClient.readContract({
-                address: STANDING_ADDRESS,
-                abi: standingAbi,
-                functionName: 'mandates',
                 args: [id],
                 blockNumber,
               }),
@@ -169,7 +198,7 @@ export function useStanding(account?: Address) {
     } finally {
       if (isCurrentRequest()) setLoading(false)
     }
-  }, [account])
+  }, [account, requestedMandateIds, requestedPlanIds, scope.catalogLimit])
 
   useEffect(() => {
     void refresh()

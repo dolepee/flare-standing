@@ -13,7 +13,7 @@ export function MandateRow({ mandate, plan }: { mandate: StandingMandate; plan?:
   const { account, execute } = useWallet()
   const { state, refresh } = useProtocol()
   const isOwner = isSameAddress(account, mandate.subscriber)
-  const due = Number(mandate.nextChargeAt) * 1_000 <= Date.now()
+  const due = state.chainTimestamp >= mandate.nextChargeAt
   const planPaused = plan?.active === false
 
   async function action(functionName: 'cancel' | 'withdrawMandate' | 'charge', label: string) {

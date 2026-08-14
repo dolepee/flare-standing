@@ -35,7 +35,7 @@ test('writes route-specific crawler metadata into every stable HTML response', a
 
     const expected = [
       ['index.html', 'Standing | Pay in XRP, land subscribed on Flare', 'https://standing.dolepee.com/'],
-      ['demo/index.html', 'Wallet-Free XRP Subscription Demo | Standing', 'https://standing.dolepee.com/demo'],
+      ['demo/index.html', 'XRP Treasury Runbook Demo | Standing', 'https://standing.dolepee.com/demo'],
       ['evidence/index.html', 'Verified XRP-to-Flare Receipts | Standing', 'https://standing.dolepee.com/evidence'],
     ]
     for (const [file, title, canonicalUrl] of expected) {

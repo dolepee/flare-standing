@@ -34,13 +34,13 @@ const planCatalog: Record<string, CatalogEntry> = {
   },
   '2': {
     merchant: DURABLE_DEMO_MERCHANT,
-    name: 'XRP Subscription Launch Brief',
+    name: 'XRP Creator Treasury Runbook',
     merchantName: 'Standing Durable Pilot',
-    summary: 'A 14-day testnet pass kept visibly useful through the judging window.',
+    summary: 'A 14-day testnet pass to an actionable creator treasury incident runbook.',
     description:
       'Pay the first fixed cycle immediately, retain nine future cycles of bounded capacity, and keep unilateral cancellation and refund rights.',
-    accessTitle: 'XRP subscription launch policy',
-    accessSummary: 'A creator-ready launch policy unlocked only while the exact long-lived Coston2 mandate is paid.',
+    accessTitle: 'XRP creator treasury incident runbook',
+    accessSummary: 'A practical response checklist unlocked only while the exact long-lived Coston2 mandate is paid.',
     benefits: ['Fourteen-day paid window', 'Fixed 0.01 FTestXRP cycle', 'Onchain cancellation and refund'],
     operatorControlled: true,
   },

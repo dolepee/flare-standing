@@ -57,9 +57,7 @@ transaction input byte-for-byte:
 - `FtsoUsdToFxrpAdapter`: `ADAPTER_SOURCE_MATCH=true` (`2,649` creation bytes)
 
 This proves V1 commit `b5ab700`/deployment source equivalence. Candidate V2
-changes made after that commit are not deployed by this evidence. It is not a claim that
-the explorer has published or independently verified the source; Blockscout
-source publication remains a release operation.
+changes made after that commit are not deployed by this V1 evidence.
 
 ### Current reviewed V2 deployment and immediate-value proof
 
@@ -74,6 +72,16 @@ deployment below. The final legacy-recovery increment was reviewed at PR head
   - FTestXRP: `0x0b6A3645c240605887a5532109323A3E12273dc7`
   - price adapter: `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8`
   - fee: `100` bps; maximum price age: `300` seconds
+  - explorer source verification completed on 2026-08-14
+  - repository creation input: `17,430` bytes, Keccak
+    `0x863056a8c56dd7ae83c432e1d952d038eb8880edea04716c741cda6ad1989ac0`
+  - live runtime Keccak:
+    `0x71b1a390cb6500fc2bda80d12e167b6eaf19d1fbbfa5213a2cfa7792f7916198`
+- FTSO adapter source is explorer verified; live runtime Keccak:
+  `0xa6e578a9288f174f218f29d57ccf8acc9034161ae2786d09467af208bf37f5b0`
+- `node script/check-deployment-reproducibility.mjs` automatically rebuilds and
+  checks the exact V2 deployment input, receipt, runtime hashes, chain, block,
+  contract address, and both explorer verification records.
 - Fixed plan 1: `0.1 FTestXRP` every `600` seconds
   - creation: `0x06c0bfc5ecd8cb12327ad15b658d15bc328c0087644c5b2a57a97fbe6c28b2c0`
 - XRPL Testnet authorization:
@@ -362,14 +370,14 @@ gas limit (`0x78527541f9e008333398f522dc86ccf78b782514ee8785825964f04ba961453f`)
 
 ### Gate status
 
-- The reviewed V2 deployment is live and its fresh atomic proof completed the
-  full immediate-value path: XRPL payment, FDC proof, direct mint, mandate open,
-  and first charge in one Coston2 execution.
+- The reviewed V2 deployment is live. A fresh XRPL authorization completed the
+  resumable FDC settlement path; direct mint, mandate open, and first charge
+  then completed atomically inside one Coston2 execution.
 - Historical proof remains useful for the insufficient-balance keeper path.
 - The deployed V1 proof contract proves the successful lifecycle, post-cancel rejection, subscriber refund, merchant withdrawal, protocol withdrawal, and zero residual allowance.
 - The Coston2 contract, live FTSO, and XRPL-to-Coston2 direct-mint portions of
   the 48-hour gate are complete.
-- The one-payment atomic subscription gate is complete: XRPL payment, FDC
+- The one-payment cross-chain subscription gate is complete: XRPL payment, FDC
   proof, direct mint, token approval, and stored Standing mandate all match.
 - The controlled external Coston2 pilot is complete: separate merchant and
   subscriber wallets created and funded the relationship, the keeper charged

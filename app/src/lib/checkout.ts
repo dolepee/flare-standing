@@ -1,5 +1,15 @@
 import type { StandingPlan } from '../contracts'
 
+export const DEFAULT_USD_PLAN_CAPACITY = 100_000n
+
+export function suggestedPrepaidCapacity(plan: Pick<StandingPlan, 'priceUsdMicro' | 'priceFxrp'>, cycles = 3n) {
+  const fixed = plan.priceFxrp > 0n
+  const usdPriced = plan.priceUsdMicro > 0n
+  if (fixed === usdPriced) throw new Error('Plan pricing is invalid')
+  if (cycles <= 0n) throw new Error('Cycle count must be positive')
+  return fixed ? plan.priceFxrp * cycles : DEFAULT_USD_PLAN_CAPACITY
+}
+
 export function selectInitialChargeCeiling(
   plan: Pick<StandingPlan, 'priceUsdMicro' | 'priceFxrp'>,
   deposit: bigint,

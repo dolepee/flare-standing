@@ -43,7 +43,7 @@ export function EvidencePage() {
       </section>
 
       <section className="receipt-boundary" aria-label="Proof and checkout boundary">
-        <div><strong>Verified XRP paths</strong><span>Fresh public V2 receipts; the demo reads only plan 2 and mandate 2 at one explicitly labelled Coston2 block. No wallet or writes.</span></div>
+        <div><strong>Verified XRP settlement paths</strong><span>Fresh public V2 receipts; the demo reads only plan 2 and mandate 2 at one explicitly labelled Coston2 block. No wallet or writes.</span></div>
         <div><strong>Live V2 + bounded V1 recovery</strong><span>New actions use V2. The public app exposes V1 only for subscriber cancellation and canceled-balance withdrawal.</span><Link className="text-link" to="/legacy-recovery">Open recovery route</Link></div>
       </section>
 
@@ -58,7 +58,7 @@ export function EvidencePage() {
           ))}
         </div>
         <aside className="mint-timeline">
-          <span className="eyebrow">Verified XRPL → Flare path</span><h2>One payment, one atomic result</h2>
+          <span className="eyebrow">Verified XRPL → Flare path</span><h2>One authorization, resumable settlement</h2>
           <ol>
             <li><span>1.2 XRP</span><div><strong>Payment validated</strong><small>tesSUCCESS · ledger {ATOMIC_PROOF.xrplLedger} · canonical 0xFE instruction</small></div></li>
             <li><span>FDC</span><div><strong>Payment proven on Coston2</strong><small>1.1 FTestXRP reached the Smart Account; 1 FTestXRP entered Standing</small></div></li>
