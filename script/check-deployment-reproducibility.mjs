@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 const ROOT = new URL('../', import.meta.url)
-const RPC_URL = process.env.COSTON2_RPC_URL ?? 'https://coston2-api.flare.network/ext/C/rpc'
+const RPC_URLS = [
+  process.env.COSTON2_RPC_URL ?? 'https://falling-skilled-uranium.flare-coston2.quiknode.pro/ext/bc/C/rpc',
+  process.env.COSTON2_FALLBACK_RPC_URL ?? 'https://coston2-api.flare.network/ext/C/rpc',
+].filter((url, index, urls) => urls.indexOf(url) === index)
 const EXPLORER_API = process.env.COSTON2_EXPLORER_API ?? 'https://coston2-explorer.flare.network/api'
 
 function sameHex(left, right) {
@@ -21,16 +24,24 @@ function keccak(hex) {
 }
 
 async function rpc(method, params = []) {
-  const response = await fetch(RPC_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    signal: AbortSignal.timeout(15_000),
-  })
-  if (!response.ok) throw new Error(`Coston2 RPC ${method} returned HTTP ${response.status}`)
-  const body = await response.json()
-  if (body.error) throw new Error(`Coston2 RPC ${method}: ${body.error.message}`)
-  return body.result
+  const failures = []
+  for (const rpcUrl of RPC_URLS) {
+    try {
+      const response = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const body = await response.json()
+      if (body.error) throw new Error(body.error.message)
+      return body.result
+    } catch (error) {
+      failures.push(`${rpcUrl}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  throw new Error(`Coston2 RPC ${method} failed on every configured endpoint:\n- ${failures.join('\n- ')}`)
 }
 
 async function sourceVerified(address) {

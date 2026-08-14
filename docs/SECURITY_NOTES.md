@@ -84,7 +84,8 @@ checkout contract. No proxy or upgrade path exists.
   Actions scheduling remains best-effort and is
   not a precise-cadence guarantee; `queue: max` serializes up to 100 pending actual
   invocations rather than replacing the prior pending run. The shell keeper remains
-  read-only by default and is pinned to mandate 2 during the judge window. The
+  read-only by default, supports explicit or bounded all-mandate discovery, and
+  refuses silent truncation. The
   contract itself remains permissionless, so third parties can call a due mandate
   directly even when Standing's hosted and shell keepers exclude it.
 - The client-side entitlement route is a reference integration, not a secure
@@ -106,12 +107,17 @@ compatibility identifier or the deployment reproduction proof:
   merchant manifest.
 - The deployed owner and treasury are single testnet EOAs, and ownership transfer
   is one-step. A production release needs multisig custody and two-step transfer.
-- Merchant deactivation does not refund an already-paid service period, and
-  delayed charges schedule the next period from actual execution time rather
-  than preserving a calendar anchor.
-- The browser and hosted keeper currently use one Coston2 RPC endpoint. A
-  production client needs independently operated providers, health checks, and
-  fail-closed comparison for sensitive reads.
+- Merchant deactivation immediately blocks future charges but does not refund an
+  already-paid service period. A delayed keeper can execute at most one charge,
+  then schedules the next period from actual execution time; V2 never performs
+  catch-up charges. These semantics are covered by transition tests.
+- The browser uses the Coston2 explorer's paginated address-log index to discover
+  a connected subscriber's complete mandate history, then reads every discovered
+  mandate directly from the contract at one pinned block. Browser contract reads
+  and the shell keeper use both RPC endpoints currently published by Flare,
+  validate chain ID 114, and fail over on transport errors. The index remains an
+  availability dependency, and the hosted keeper still needs independent-provider
+  disagreement detection before mainnet.
 - `createPlan` remains available while mandate fund operations are paused; V2's
   pause semantics stop new mandate exposure, top-ups, and charges rather than
   listing creation.
@@ -119,8 +125,10 @@ compatibility identifier or the deployment reproduction proof:
   Adding recovery requires an explicit liability accumulator and multisig/
   timelocked excess-only withdrawal in a future deployment.
 - Constructor-time deployment checks are operational rather than onchain: the
-  release script and CI verify contract code, token decimals, adapter identity,
-  constructor input, runtime bytecode, and explorer source after deployment.
-- The current invariant suite proves global custody and deposit bounds with a
-  narrow actor/token model. Multi-actor, multi-plan, variable-oracle, pause,
-  deactivation, and adversarial-token stateful campaigns remain mainnet work.
+  release script rejects a wrong chain, missing dependency code, wrong token
+  decimals, invalid fee, stale-price configuration, or treasury before broadcast.
+  CI separately verifies constructor input, runtime bytecode, and explorer source.
+- The invariant suite proves global custody and deposit bounds. Unit and edge
+  suites additionally cover multiple actors and plans, variable and stale oracle
+  prices, pause and deactivation transitions, missed periods, reentrancy, and
+  adversarial token behavior. Longer multi-actor stateful campaigns remain V3 work.

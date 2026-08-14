@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Address } from 'viem'
-import { FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
+import { coston2, FXRP_ADDRESS, STANDING_ADDRESS } from '../config'
 import {
   erc20Abi,
   standingAbi,
@@ -9,6 +9,7 @@ import {
 } from '../contracts'
 import { publicClient } from '../lib/chain'
 import { errorMessage } from '../lib/format'
+import { indexedSubscriberMandateIds } from '../lib/mandateIndex'
 
 type ProtocolState = {
   snapshotBlockNumber: bigint
@@ -90,8 +91,9 @@ export function useStanding(account?: Address, scope: StandingReadScope = {}) {
       const latestBlock = await publicClient.getBlock({ blockTag: 'latest' })
       if (latestBlock.number === null) throw new Error('Latest Coston2 block has no number')
       const blockNumber = latestBlock.number
-      const [planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
+      const [chainId, planCount, mandateCount, contractBalance, paused, feeBps, maxPriceAge, treasury] =
         await Promise.all([
+          publicClient.getChainId(),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'planCount', blockNumber }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'mandateCount', blockNumber }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'contractBalance', blockNumber }),
@@ -100,8 +102,17 @@ export function useStanding(account?: Address, scope: StandingReadScope = {}) {
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'maxPriceAge', blockNumber }),
           publicClient.readContract({ address: STANDING_ADDRESS, abi: standingAbi, functionName: 'treasury', blockNumber }),
         ])
+      if (chainId !== coston2.id) throw new Error(`RPC returned chain ${chainId}; expected Coston2 chain ${coston2.id}`)
 
-      const mandateIds = selectedIds(mandateCount, requestedMandateIds, scope.catalogLimit)
+      const recentMandateIds = selectedIds(mandateCount, requestedMandateIds, scope.catalogLimit)
+      const ownedMandateIds = account && requestedMandateIds === undefined
+        ? await indexedSubscriberMandateIds(account, blockNumber)
+        : []
+      const mandateIds = [...new Set([
+        ...recentMandateIds,
+        ...ownedMandateIds.filter((id) => id > 0n && id <= mandateCount),
+      ])]
+        .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
       const rawMandates = await Promise.all(
         mandateIds.map((id) =>
           publicClient.readContract({

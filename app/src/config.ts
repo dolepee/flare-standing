@@ -1,13 +1,17 @@
 import { defineChain } from 'viem'
 
 export const COSTON2_RPC = 'https://coston2-api.flare.network/ext/C/rpc'
+export const COSTON2_FALLBACK_RPC = 'https://falling-skilled-uranium.flare-coston2.quiknode.pro/ext/bc/C/rpc'
+// The independently operated endpoint tolerates browser concurrency better; the
+// Flare-operated endpoint remains the immediate fallback and wallet add-chain URL.
+export const COSTON2_RPCS = [COSTON2_FALLBACK_RPC, COSTON2_RPC] as const
 export const COSTON2_EXPLORER = 'https://coston2-explorer.flare.network'
 
 export const coston2 = defineChain({
   id: 114,
   name: 'Coston2',
   nativeCurrency: { name: 'Coston2 Flare', symbol: 'C2FLR', decimals: 18 },
-  rpcUrls: { default: { http: [COSTON2_RPC] } },
+  rpcUrls: { default: { http: [...COSTON2_RPCS] } },
   blockExplorers: {
     default: { name: 'Coston2 Explorer', url: COSTON2_EXPLORER },
   },
