@@ -53,6 +53,30 @@ function parseChainId(value: unknown) {
   return undefined
 }
 
+function isUnknownChainError(error: unknown, depth = 0): boolean {
+  if (depth > 4 || typeof error !== 'object' || error === null) return false
+
+  const candidate = error as {
+    code?: unknown
+    message?: unknown
+    shortMessage?: unknown
+    data?: unknown
+    cause?: unknown
+    error?: unknown
+    originalError?: unknown
+  }
+  if (candidate.code === 4902) return true
+
+  const detail = [candidate.message, candidate.shortMessage]
+    .find((value): value is string => typeof value === 'string')
+  if (detail && /(?:unrecognized|unknown|not added|does not exist).*chain|chain.*(?:unrecognized|unknown|not added|does not exist)/i.test(detail)) {
+    return true
+  }
+
+  return [candidate.data, candidate.cause, candidate.error, candidate.originalError]
+    .some((nested) => isUnknownChainError(nested, depth + 1))
+}
+
 export function WalletProvider({ children }: PropsWithChildren) {
   const [account, setAccount] = useState<Address>()
   const [chainId, setChainId] = useState<number>()
@@ -108,8 +132,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
           params: [{ chainId: chainIdHex }],
         })
       } catch (error) {
-        const code = (error as { code?: number }).code
-        if (code !== 4902) throw error
+        if (!isUnknownChainError(error)) throw error
         await window.ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [
