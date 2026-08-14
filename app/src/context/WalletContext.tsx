@@ -53,6 +53,25 @@ function parseChainId(value: unknown) {
   return undefined
 }
 
+function hasUnknownChainStatus(detail: string) {
+  const firstClause = detail.split(/\n|(?<=[.!?])\s+/u, 1)[0] ?? detail
+  const tokens = firstClause
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/gu, ' ')
+    .split(/\s+/u)
+    .filter(Boolean)
+  const chainIndex = tokens.findIndex((token) => token === 'chain' || token === 'network')
+  if (chainIndex < 0) return false
+
+  const statusIndexes = tokens.flatMap((token, index) => {
+    if (token === 'unknown' || token === 'unrecognized' || token === 'unsupported') return [index]
+    if (token === 'not' && tokens[index + 1] === 'added') return [index]
+    if (token === 'does' && tokens[index + 1] === 'not' && tokens[index + 2] === 'exist') return [index]
+    return []
+  })
+  return statusIndexes.some((statusIndex) => Math.abs(statusIndex - chainIndex) <= 4)
+}
+
 function isUnknownChainError(error: unknown, depth = 0): boolean {
   if (depth > 4 || typeof error !== 'object' || error === null) return false
 
@@ -69,12 +88,7 @@ function isUnknownChainError(error: unknown, depth = 0): boolean {
 
   const detail = [candidate.message, candidate.shortMessage]
     .find((value): value is string => typeof value === 'string')
-  if (detail && (
-    /(?:unrecognized|unknown|unsupported|not added|does not exist)\s+\b(?:chain|network)\b(?:\s+id)?/i.test(detail)
-    || /\b(?:chain|network)\b(?:\s+id)?(?:\s+(?:0x[0-9a-f]+|\d+))?\s+(?:is\s+)?(?:unrecognized|unknown|unsupported|not added|does not exist)/i.test(detail)
-  )) {
-    return true
-  }
+  if (detail && hasUnknownChainStatus(detail)) return true
 
   return [candidate.data, candidate.cause, candidate.error, candidate.originalError]
     .some((nested) => isUnknownChainError(nested, depth + 1))

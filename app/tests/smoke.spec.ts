@@ -404,7 +404,7 @@ test('chain identifiers before unknown-chain status still trigger Coston2 setup'
         if (method === 'wallet_addEthereumChain') return null
         if (method === 'wallet_switchEthereumChain') {
           switchCalls += 1
-          if (switchCalls === 1) throw { code: -32603, message: 'Chain ID 0x72 is not added' }
+          if (switchCalls === 1) throw { code: -32603, message: 'Chain ID: "0x72" is not added' }
           const chainParameter = params?.[0] as { chainId?: string } | undefined
           if (!chainParameter?.chainId) throw new Error('Missing chain ID')
           activeChain = chainParameter.chainId
