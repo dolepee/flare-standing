@@ -72,7 +72,7 @@ export const JUDGE_DEMO_REPLAY_STEPS: readonly JudgeDemoReplayStep[] = Object.fr
     shortLabel: 'Unlock access',
     network: 'Standing V2 · Flare Coston2 testnet',
     title: 'The first cycle pays and the useful result opens immediately.',
-    summary: `Inside that Coston2 execution, Standing opens plan 2 / mandate 2, charges exactly 0.01 FTestXRP, leaves 0.09 under the subscriber-controlled mandate, and activates the launch brief through 25 Aug 2026.`,
+    summary: `Inside that Coston2 execution, Standing opens plan 2 / mandate 2, charges exactly 0.01 FTestXRP, leaves 0.09 under the subscriber-controlled mandate, and activates the treasury incident runbook through 25 Aug 2026.`,
     result: `Block ${JUDGE_DEMO.openingBlock.toLocaleString('en-US')} · paid now · 0.09 capacity left`,
     transaction: JUDGE_DEMO.coston2Transaction,
     href: JUDGE_DEMO.coston2Href,

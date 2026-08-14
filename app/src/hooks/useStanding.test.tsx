@@ -123,4 +123,51 @@ describe('useStanding', () => {
       expect(input.blockNumber).toBe(100n)
     }
   })
+
+  it('reads only a requested checkout plan even when global history is large', async () => {
+    mocks.readContract.mockImplementation((input) => {
+      if (!input) return 0n
+      const { functionName, args = [] } = input
+      if (functionName === 'planCount' || functionName === 'mandateCount') return 10_000n
+      if (functionName === 'contractBalance') return 0n
+      if (functionName === 'paused') return false
+      if (functionName === 'feeBps') return 0
+      if (functionName === 'maxPriceAge') return 60n
+      if (functionName === 'treasury') return zeroAddress
+      if (functionName === 'plans' && args[0] === 9_999n) return [accountA, 0n, 10_000n, 86_400, true]
+      throw new Error(`Unexpected read: ${functionName} ${args.join(',')}`)
+    })
+
+    const { result } = renderHook(() => useStanding(undefined, { planIds: [9_999n], mandateIds: [] }))
+    await waitFor(() => expect(result.current.initialized).toBe(true))
+
+    expect(result.current.state.planCount).toBe(10_000n)
+    expect(result.current.state.plans.map((plan) => plan.id)).toEqual([9_999n])
+    expect(mocks.readContract.mock.calls.filter(([input]) => input.functionName === 'plans')).toHaveLength(1)
+    expect(mocks.readContract.mock.calls.filter(([input]) => input.functionName === 'mandates')).toHaveLength(0)
+  })
+
+  it('loads only a requested mandate and its referenced plan', async () => {
+    mocks.readContract.mockImplementation((input) => {
+      if (!input) return 0n
+      const { functionName, args = [] } = input
+      if (functionName === 'planCount' || functionName === 'mandateCount') return 10_000n
+      if (functionName === 'contractBalance') return 0n
+      if (functionName === 'paused') return false
+      if (functionName === 'feeBps') return 0
+      if (functionName === 'maxPriceAge') return 60n
+      if (functionName === 'treasury') return zeroAddress
+      if (functionName === 'mandates' && args[0] === 8_888n) return [7_777n, accountA, 1n, 1n, 1n, 1n, false]
+      if (functionName === 'plans' && args[0] === 7_777n) return [accountA, 0n, 10_000n, 86_400, true]
+      throw new Error(`Unexpected read: ${functionName} ${args.join(',')}`)
+    })
+
+    const { result } = renderHook(() => useStanding(undefined, { planIds: [], mandateIds: [8_888n] }))
+    await waitFor(() => expect(result.current.initialized).toBe(true))
+
+    expect(result.current.state.mandates.map((mandate) => mandate.id)).toEqual([8_888n])
+    expect(result.current.state.plans.map((plan) => plan.id)).toEqual([7_777n])
+    expect(mocks.readContract.mock.calls.filter(([input]) => input.functionName === 'plans')).toHaveLength(1)
+    expect(mocks.readContract.mock.calls.filter(([input]) => input.functionName === 'mandates')).toHaveLength(1)
+  })
 })

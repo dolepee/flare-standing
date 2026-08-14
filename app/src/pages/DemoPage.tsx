@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Copy, ExternalLink, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Status } from '../components/Status'
 import { useJudgeDemo } from '../hooks/useJudgeDemo'
-import { formatFxrp, formatPeriod, runUiAction, shortAddress } from '../lib/format'
+import { formatFxrp, runUiAction, shortAddress } from '../lib/format'
 import { JUDGE_DEMO } from '../lib/judgeDemo'
 
 function utcTime(timestamp: bigint) {
@@ -15,14 +15,6 @@ function utcTime(timestamp: bigint) {
     hour12: false,
     timeZone: 'UTC',
   }).format(new Date(Number(timestamp) * 1_000))} UTC`
-}
-
-function publishablePeriod(seconds: number) {
-  if (seconds > 0 && seconds % 86_400 === 0) {
-    const days = seconds / 86_400
-    return `${days} ${days === 1 ? 'day' : 'days'}`
-  }
-  return formatPeriod(seconds)
 }
 
 export function DemoPage() {
@@ -45,7 +37,7 @@ export function DemoPage() {
       <div className="page route-failure" role="alert">
         <LockKeyhole aria-hidden="true" />
         <span className="eyebrow">Wallet-free live demo · Coston2 testnet</span>
-        <h1>The subscriber brief is locked.</h1>
+        <h1>The treasury runbook is locked.</h1>
         <p>No access decision is made when the public Coston2 read fails.</p>
         <div className="heading-actions">
           <button className="button button-secondary" type="button" onClick={() => runUiAction(refresh())}>Retry Coston2 read</button>
@@ -61,7 +53,7 @@ export function DemoPage() {
       <div className="page route-failure" role="status">
         <LockKeyhole aria-hidden="true" />
         <span className="eyebrow">Wallet-free live demo · Coston2 testnet</span>
-        <h1>The subscriber brief is locked.</h1>
+        <h1>The treasury runbook is locked.</h1>
         <p>{demo.reason}</p>
         <div className="heading-actions">
           <button className="button button-secondary" type="button" onClick={() => runUiAction(refresh())}>Refresh exact mandate</button>
@@ -73,26 +65,32 @@ export function DemoPage() {
 
   const { mandate, plan } = demo
   const futureCycles = plan.priceFxrp > 0n ? mandate.remaining / plan.priceFxrp : 0n
-  const creatorPeriod = publishablePeriod(plan.periodSeconds)
-  const creatorTerms = [
-    'XRP Subscription Launch Brief — creator terms',
-    'Network: Flare Coston2 testnet',
-    `Price: ${formatFxrp(plan.priceFxrp, 6)} FTestXRP every ${creatorPeriod}`,
-    `Prepaid cap: ${formatFxrp(mandate.deposited, 6)} FTestXRP`,
-    `Current capacity: ${formatFxrp(mandate.remaining, 6)} FTestXRP (${futureCycles.toString()} fixed-price cycles) at Coston2 block ${snapshot.snapshotBlockNumber.toString()}`,
-    `Access paid through: ${utcTime(mandate.nextChargeAt)}`,
-    'Exit: The subscriber may cancel without merchant permission and recover every unused unit.',
-    'Failed charge: No debt is created; access pauses at the paid-through boundary.',
-    'Collection: Any keeper may submit a due charge, but cannot charge early, reprice the plan, or withdraw subscriber capacity.',
-    'Production requirement: Authenticate subscriber ownership before returning private content.',
-    `XRP payment proof: ${JUDGE_DEMO.xrplHref}`,
-    `Atomic activation proof: ${JUDGE_DEMO.coston2Href}`,
+  const creatorRunbook = [
+    'XRP CREATOR TREASURY INCIDENT RUNBOOK',
+    '',
+    'FIRST 15 MINUTES',
+    '1. Stop publishing payment links and disable affected automation. Do not delete logs.',
+    '2. Move unaffected authority to a clean device and require a second reviewer for every recovery transaction.',
+    '3. Record the incident start time, affected addresses, chain, latest known-good transaction and current balances.',
+    '',
+    'EVIDENCE PACK',
+    '- Export transaction hashes, block or ledger numbers, destination tags/memos, token contracts and signed operator actions.',
+    '- Record facts separately from assumptions. Preserve failed and successful receipts.',
+    '- Never request a seed phrase, private key or remote-screen access from a community member.',
+    '',
+    'PUBLIC STATUS TEMPLATE',
+    'We are investigating a treasury/payment incident affecting [scope] since [UTC time]. Do not send funds or trust DMs. Verified updates will appear only at [official channel]. Next update: [UTC time].',
+    '',
+    'RECOVERY GATE',
+    '- Reconcile expected liabilities against actual custody before reopening.',
+    '- Test the recovery path with test assets, then require two-person review for production actions.',
+    '- Publish a final incident timeline and rotate every credential exposed to the affected environment.',
   ].join('\n')
 
   async function copyCreatorTerms() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
-      await navigator.clipboard.writeText(creatorTerms)
+        await navigator.clipboard.writeText(creatorRunbook)
       setCopyState('copied')
     } catch {
       setCopyState('failed')
@@ -107,7 +105,7 @@ export function DemoPage() {
           <span>No wallet · no faucet · no transaction</span>
         </div>
         <span className="eyebrow">Live subscriber demo · Flare Coston2 testnet</span>
-        <h1 id="demo-title">An XRP payment unlocked this subscriber brief.</h1>
+        <h1 id="demo-title">An XRP payment unlocked a treasury incident runbook.</h1>
         <p>
           Standing reads one exact 14-day mandate and reveals the controlled artifact only while its latest cycle is paid. This public judge view requires no setup.
         </p>
@@ -125,21 +123,21 @@ export function DemoPage() {
         <article className="demo-artifact" aria-labelledby="demo-artifact-title">
           <header className="demo-artifact-header">
             <div>
-              <span>XRP SUBSCRIPTION LAUNCH BRIEF</span>
+            <span>XRP CREATOR TREASURY RUNBOOK</span>
               <strong>LIVE REFERENCE · PLAN #{plan.id.toString()} · MANDATE #{mandate.id.toString()}</strong>
             </div>
             <div className="demo-artifact-seal"><CheckCircle2 aria-hidden="true" /> Unlocked</div>
           </header>
 
           <div className="demo-article">
-            <span className="eyebrow">For XRP creators and communities</span>
-            <h2 id="demo-artifact-title">A launch-ready policy for bounded recurring access.</h2>
-            <p>This live reference turns the paid mandate into terms a creator can publish before accepting subscribers.</p>
+            <span className="eyebrow">For XRP creators and community treasuries</span>
+            <h2 id="demo-artifact-title">Contain a payment incident without losing the evidence.</h2>
+            <p>A compact operating runbook for the first response, evidence pack, public status update and recovery gate.</p>
             <div className="demo-copy-ready">
               <div>
-                <span className="eyebrow">Creator-ready terms</span>
-                <strong>{formatFxrp(plan.priceFxrp, 6)} FTestXRP every {creatorPeriod} · {formatFxrp(mandate.deposited, 6)} FTestXRP cap</strong>
-                <small>Cancellation, unused-cap recovery, charge failure and keeper limits included.</small>
+                <span className="eyebrow">Ready-to-use response pack</span>
+                <strong>Contain · preserve · communicate · recover</strong>
+                <small>Includes a public status template and a two-person reopening gate.</small>
               </div>
               <button
                 className="button button-primary"
@@ -148,11 +146,11 @@ export function DemoPage() {
                 aria-describedby="demo-copy-status"
               >
                 {copyState === 'copied' ? <CheckCircle2 size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
-                {copyState === 'copied' ? 'Terms copied' : 'Copy exact terms'}
+                {copyState === 'copied' ? 'Runbook copied' : 'Copy runbook'}
               </button>
             </div>
             <p className="demo-copy-status" id="demo-copy-status" role="status" aria-live="polite">
-              {copyState === 'copied' ? 'Creator-ready terms copied to the clipboard.' : copyState === 'failed' ? 'Automatic copy was blocked. The exact terms are selected below; press Command+C or Control+C to copy them.' : ''}
+              {copyState === 'copied' ? 'Treasury incident runbook copied to the clipboard.' : copyState === 'failed' ? 'Automatic copy was blocked. The runbook is selected below; press Command+C or Control+C to copy it.' : ''}
             </p>
             {copyState === 'failed' ? (
               <label className="demo-copy-fallback">
@@ -161,22 +159,22 @@ export function DemoPage() {
                   ref={manualCopyRef}
                   readOnly
                   rows={10}
-                  value={creatorTerms}
-                  aria-label="Creator-ready subscription terms to copy manually"
+                  value={creatorRunbook}
+                  aria-label="Treasury incident runbook to copy manually"
                   onFocus={(event) => event.currentTarget.select()}
                 />
               </label>
             ) : null}
             <ol className="demo-rules">
-              <li><span>01</span><div><strong>Publish the ceiling before checkout.</strong><p>The live reference charges {formatFxrp(plan.priceFxrp, 6)} FTestXRP every {formatPeriod(plan.periodSeconds)} from a {formatFxrp(mandate.deposited, 6)} FTestXRP prepaid cap. After immediate access, {futureCycles.toString()} fixed-price cycles remain.</p></div></li>
-              <li><span>02</span><div><strong>Make exit and failure boring.</strong><p>The subscriber can cancel without merchant permission and recover every unused unit. An underfunded charge creates no debt; access simply pauses at the paid-through boundary.</p></div></li>
-              <li><span>03</span><div><strong>Automate collection without keeper custody.</strong><p>Any keeper may submit a due charge, but cannot charge early, reprice the plan, or withdraw subscriber capacity. Private services verify the paid window server-side.</p></div></li>
+              <li><span>01</span><div><strong>Contain before explaining.</strong><p>Stop affected payment links and automation, preserve logs, and move unaffected authority to a clean device with a second reviewer.</p></div></li>
+              <li><span>02</span><div><strong>Build a fact-only evidence pack.</strong><p>Record addresses, transaction hashes, ledgers or blocks, token contracts, timestamps and balances. Keep assumptions in a separate section.</p></div></li>
+              <li><span>03</span><div><strong>Reopen only after reconciliation.</strong><p>Match actual custody to expected liabilities, test recovery with test assets, rotate exposed credentials and publish the final timeline.</p></div></li>
             </ol>
           </div>
 
           <footer className="demo-unlock">
             <ShieldCheck aria-hidden="true" />
-            <span><strong>Launch policy verified from live chain state</strong>Paid through {utcTime(mandate.nextChargeAt)}</span>
+            <span><strong>Useful runbook unlocked by live chain state</strong>Paid through {utcTime(mandate.nextChargeAt)}</span>
           </footer>
         </article>
 
@@ -202,7 +200,7 @@ export function DemoPage() {
               Inspect XRP payment <ExternalLink size={14} aria-hidden="true" />
             </a>
             <a className="button button-secondary" href={JUDGE_DEMO.coston2Href} target="_blank" rel="noreferrer">
-              Inspect atomic activation <ExternalLink size={14} aria-hidden="true" />
+              Inspect Coston2 activation <ExternalLink size={14} aria-hidden="true" />
             </a>
           </div>
           <p>Exact public read from Coston2 block {snapshot.snapshotBlockNumber.toLocaleString('en-US')}. The activation receipt is a controlled testnet proof at block {JUDGE_DEMO.openingBlock.toLocaleString('en-US')}.</p>

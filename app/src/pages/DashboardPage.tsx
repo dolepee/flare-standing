@@ -25,7 +25,7 @@ export function DashboardPage() {
           <span className="eyebrow">XRP-funded recurring access · Flare Coston2 testnet</span>
           <h1 id="atomic-hero-title">Pay in XRP. Land subscribed on Flare.</h1>
           <p>
-            Standing turns an XRP payment into bounded recurring access on Flare. Open the live subscriber brief without a wallet, then inspect the verified cross-chain path and cancelable mandate behind it.
+            Standing turns an XRP payment into bounded recurring access on Flare. Open the live treasury incident runbook without a wallet, then inspect the verified cross-chain path and cancelable mandate behind it.
           </p>
 
           <div className="hero-actions">
@@ -33,7 +33,7 @@ export function DashboardPage() {
             <a className="button button-secondary" href="#verified-replay">Verify the exact receipts</a>
           </div>
 
-          <dl className="atomic-facts" aria-label="Verified atomic subscription facts">
+          <dl className="atomic-facts" aria-label="Verified subscription facts">
             <div><dt>User authorized</dt><dd>0.3 XRP</dd></div>
             <div><dt>Standing capacity</dt><dd>0.1 FTestXRP</dd></div>
             <div><dt>Immediate result</dt><dd>Mandate #2 paid</dd></div>

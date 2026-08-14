@@ -134,8 +134,11 @@ claim.
 | FTSO adapter | `0xd076bb76F5A0C489163d746C9Afd0A7f91D06Ae8` |
 | FTestXRP | `0x0b6A3645c240605887a5532109323A3E12273dc7` |
 
-The reviewed V2 deployment is commit-bound to the exact
-`standing.mandates.v2.open-and-charge.cancel-and-withdraw-exact` capability.
+The reviewed V2 deployment exposes the
+`standing.mandates.v2.open-and-charge.cancel-and-withdraw-exact` compatibility
+identifier. It is a client fail-closed interface check, not a source-commit or
+deployed-bytecode commitment. Source equivalence is checked separately by
+`node script/check-deployment-reproducibility.mjs`.
 Its controlled validation proves:
 
 - fixed-FXRP and live FTSO-priced charges;
@@ -144,9 +147,10 @@ Its controlled validation proves:
 - insufficient-capacity blocking;
 - an XRPL testnet direct mint that produced 10 FTestXRP on Coston2 in 153 observed
   seconds;
-- one atomic 1.2 XRP testnet payment that direct-minted FTestXRP, opened Standing
+- one 1.2 XRP testnet authorization followed by resumable FDC settlement; the
+  resulting Coston2 execution atomically direct-minted FTestXRP, opened Standing
   V2 mandate 1 with exactly 1 FTestXRP of prepaid capacity, and charged its first
-  0.1 FTestXRP cycle in the same Coston2 transaction; and
+  0.1 FTestXRP cycle; and
 - a separate permissionless recurring charge from the dedicated testnet-only
   keeper, without the subscriber key or custody.
 
@@ -154,7 +158,7 @@ Every transaction and the exact claim boundary is recorded in
 [`docs/VALIDATION_LOG.md`](docs/VALIDATION_LOG.md). This is builder-controlled
 testnet evidence.
 
-The V2 atomic proof is independently replayable from its
+The V2 cross-chain proof is independently replayable from its
 [XRPL payment](https://testnet.xrpl.org/transactions/54E9F5D3CFEAF5236DD6BE5B8624D8AAE69307D02D027E594B6AA023D756C0FD)
 and [Coston2 execution](https://coston2-explorer.flare.network/tx/0x119d29cf92a5a41ae504b151bd6ab5e6bc1d86855f58673fe5f3b4e5d158b2c9).
 The same successful Coston2 receipt stored mandate 1 for plan 1 with
@@ -163,6 +167,12 @@ merchant and `1,000` to the protocol, and left `900,000` atomic FTestXRP as boun
 recurring capacity at receipt block `33,893,083`. This is a point-in-time
 receipt snapshot and not the mandate's current balance. It is controlled-builder testnet evidence, not mainnet
 usage or external adoption.
+
+The [Standing V2](https://coston2-explorer.flare.network/address/0xe8d1ec33dbe87590eb7be2911451e22f3981b7f7)
+and [FTSO adapter](https://coston2-explorer.flare.network/address/0xd076bb76f5a0c489163d746c9afd0a7f91d06ae8)
+sources are explorer verified. CI rebuilds V2 with the pinned compiler, recreates
+the constructor input, compares it byte-for-byte with the deployment
+transaction, and checks both live runtime hashes and verification records.
 
 At the first due boundary, the dedicated testnet-only keeper—not the deployer or
 subscriber—submitted the next permissionless

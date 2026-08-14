@@ -1,4 +1,4 @@
-# Standing atomic Smart Account tool
+# Standing XRPL-authorized Smart Account tool
 
 This Coston2 tool builds review-first `0xFE` instructions authorized by an XRPL Payment. It has two separate operations:
 

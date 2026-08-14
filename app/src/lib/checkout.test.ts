@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { StandingPlan } from '../contracts'
-import { selectInitialChargeCeiling } from './checkout'
+import { DEFAULT_USD_PLAN_CAPACITY, selectInitialChargeCeiling, suggestedPrepaidCapacity } from './checkout'
 
 const fixedPlan: StandingPlan = {
   id: 1n,
@@ -26,5 +26,17 @@ describe('selectInitialChargeCeiling', () => {
     expect(() => selectInitialChargeCeiling(usdPlan, 3_000_000n)).toThrow('Review a positive')
     expect(() => selectInitialChargeCeiling(usdPlan, 3_000_000n, 3_000_001n)).toThrow('cannot exceed')
     expect(selectInitialChargeCeiling(usdPlan, 3_000_000n, 150_000n)).toBe(150_000n)
+  })
+})
+
+describe('suggestedPrepaidCapacity', () => {
+  it('derives fixed-price capacity from an explicit cycle count', () => {
+    expect(suggestedPrepaidCapacity(fixedPlan)).toBe(750_000n)
+    expect(suggestedPrepaidCapacity(fixedPlan, 1n)).toBe(250_000n)
+    expect(suggestedPrepaidCapacity(fixedPlan, 10n)).toBe(2_500_000n)
+  })
+
+  it('uses a conservative explicit capacity for FTSO-priced plans', () => {
+    expect(suggestedPrepaidCapacity(usdPlan)).toBe(DEFAULT_USD_PLAN_CAPACITY)
   })
 })

@@ -54,6 +54,7 @@ export function MerchantPage() {
             <button type="button" className={pricing === 'fxrp' ? 'active' : ''} onClick={() => setPricing('fxrp')}>Fixed FTestXRP</button>
           </fieldset>
           <label>Charge amount<div className="input-with-unit"><input required inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} /><span>{pricing === 'usd' ? 'USD' : 'FTestXRP'}</span></div></label>
+          {pricing === 'usd' ? <small>V2 converts each due charge with the live FTSO rate and does not store a subscriber-defined per-charge ceiling after checkout. Prepaid capacity remains the mandate's total exposure bound.</small> : null}
           <label>Billing period<div className="input-with-unit"><input required inputMode="numeric" value={period} onChange={(event) => setPeriod(event.target.value)} /><span>days</span></div></label>
           <button className="button button-primary" type="submit" disabled={!account || Number(price) <= 0 || Number(period) <= 0}>Create plan</button>
           {!account ? <small>Connect the merchant wallet to create a plan.</small> : null}
