@@ -54,22 +54,19 @@ function parseChainId(value: unknown) {
 }
 
 function hasUnknownChainStatus(detail: string) {
-  const firstClause = detail.split(/\n|(?<=[.!?])\s+/u, 1)[0] ?? detail
-  const tokens = firstClause
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/gu, ' ')
-    .split(/\s+/u)
-    .filter(Boolean)
-  const chainIndex = tokens.findIndex((token) => token === 'chain' || token === 'network')
-  if (chainIndex < 0) return false
+  return detail.split(/\n|(?<=[.!?])\s+/u).some((clause) => {
+    const normalized = clause
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()
+    const chainPhrase = String.raw`(?:chain|network)(?:\s+id)?`
+    const identifier = String.raw`(?:\s+(?:0x[0-9a-f]+|\d+))?`
+    const status = String.raw`(?:unknown|unrecognized|unsupported|not\s+added|does\s+not\s+exist)`
 
-  const statusIndexes = tokens.flatMap((token, index) => {
-    if (token === 'unknown' || token === 'unrecognized' || token === 'unsupported') return [index]
-    if (token === 'not' && tokens[index + 1] === 'added') return [index]
-    if (token === 'does' && tokens[index + 1] === 'not' && tokens[index + 2] === 'exist') return [index]
-    return []
+    return new RegExp(String.raw`\b(?:unknown|unrecognized|unsupported)\s+${chainPhrase}${identifier}\b`, 'u').test(normalized)
+      || new RegExp(String.raw`\b${chainPhrase}${identifier}\s+(?:is\s+)?${status}\b`, 'u').test(normalized)
   })
-  return statusIndexes.some((statusIndex) => Math.abs(statusIndex - chainIndex) <= 4)
 }
 
 function isUnknownChainError(error: unknown, depth = 0): boolean {

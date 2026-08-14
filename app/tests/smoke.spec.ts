@@ -480,3 +480,71 @@ test('unsupported wallet method names do not trigger an add-chain prompt', async
   const calls = await page.evaluate(() => (window as unknown as { walletCalls: string[] }).walletCalls)
   expect(calls).not.toContain('wallet_addEthereumChain')
 })
+
+test('generic unknown switch errors do not trigger an add-chain prompt', async ({ page }) => {
+  await page.addInitScript(() => {
+    const account = '0x1111111111111111111111111111111111111111'
+    const calls: string[] = []
+    ;(window as unknown as { walletCalls: string[] }).walletCalls = calls
+    window.ethereum = {
+      request: async ({ method }: { method: string }) => {
+        calls.push(method)
+        if (method === 'eth_accounts') return [account]
+        if (method === 'eth_chainId') return '0x1'
+        if (method === 'wallet_switchEthereumChain') {
+          throw { code: -32603, message: 'Unknown error while switching chain' }
+        }
+        throw new Error(`Unexpected wallet method: ${method}`)
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    }
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Switch to Coston2' }).click()
+  await expect(page.getByText('Transaction stopped')).toBeVisible()
+  const calls = await page.evaluate(() => (window as unknown as { walletCalls: string[] }).walletCalls)
+  expect(calls).not.toContain('wallet_addEthereumChain')
+})
+
+for (const wrappedMessage of [
+  'Unable to switch network. Chain ID 0x72 is not added',
+  'Could not switch network because Chain ID 0x72 is not added',
+]) {
+  test(`explicit unknown-chain status is recognized: ${wrappedMessage}`, async ({ page }) => {
+    await page.addInitScript((message) => {
+      const account = '0x1111111111111111111111111111111111111111'
+      let activeChain = '0x1'
+      let switchCalls = 0
+      const calls: string[] = []
+      ;(window as unknown as { walletCalls: string[] }).walletCalls = calls
+      window.ethereum = {
+        request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+          calls.push(method)
+          if (method === 'eth_accounts') return [account]
+          if (method === 'eth_chainId') return activeChain
+          if (method === 'wallet_addEthereumChain') return null
+          if (method === 'wallet_switchEthereumChain') {
+            switchCalls += 1
+            if (switchCalls === 1) throw { code: -32603, message }
+            const chainParameter = params?.[0] as { chainId?: string } | undefined
+            if (!chainParameter?.chainId) throw new Error('Missing chain ID')
+            activeChain = chainParameter.chainId
+            return null
+          }
+          throw new Error(`Unexpected wallet method: ${method}`)
+        },
+        on: () => undefined,
+        removeListener: () => undefined,
+      }
+    }, wrappedMessage)
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Switch to Coston2' }).click()
+    await expect(page.getByRole('button', { name: /0x1111.*1111/ })).toBeVisible()
+    const calls = await page.evaluate(() => (window as unknown as { walletCalls: string[] }).walletCalls)
+    expect(calls.filter((method) => method === 'wallet_switchEthereumChain')).toHaveLength(2)
+    expect(calls).toContain('wallet_addEthereumChain')
+  })
+}
