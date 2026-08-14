@@ -53,6 +53,23 @@ function parseChainId(value: unknown) {
   return undefined
 }
 
+function hasUnknownChainStatus(detail: string) {
+  return detail.split(/\n|(?<=[.!?])\s+/u).some((clause) => {
+    const normalized = clause
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()
+    const chainPhrase = String.raw`(?:chain|network)(?:\s+id)?`
+    const identifier = String.raw`(?:\s+(?:0x[0-9a-f]+|\d+))?`
+    const status = String.raw`(?:unknown|unrecognized|unsupported|not\s+added|does\s+not\s+exist)`
+    const recovery = String.raw`(?:$|\s+(?:(?:please\s+)?add|try\s+adding)\s+(?:the\s+)?(?:chain|network)\b)`
+
+    return new RegExp(String.raw`\b(?:unknown|unrecognized|unsupported)\s+${chainPhrase}${identifier}${recovery}`, 'u').test(normalized)
+      || new RegExp(String.raw`\b${chainPhrase}${identifier}\s+(?:is\s+)?${status}\b`, 'u').test(normalized)
+  })
+}
+
 function isUnknownChainError(error: unknown, depth = 0): boolean {
   if (depth > 4 || typeof error !== 'object' || error === null) return false
 
@@ -69,9 +86,7 @@ function isUnknownChainError(error: unknown, depth = 0): boolean {
 
   const detail = [candidate.message, candidate.shortMessage]
     .find((value): value is string => typeof value === 'string')
-  if (detail && /(?:unrecognized|unknown|not added|does not exist).*chain|chain.*(?:unrecognized|unknown|not added|does not exist)/i.test(detail)) {
-    return true
-  }
+  if (detail && hasUnknownChainStatus(detail)) return true
 
   return [candidate.data, candidate.cause, candidate.error, candidate.originalError]
     .some((nested) => isUnknownChainError(nested, depth + 1))
